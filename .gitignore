@@ -24,6 +24,6 @@ npm-debug.log*
 # Agent context
 CONTEXT.md
 
-# Lock files (optional - remove if you want to commit)
-# package-lock.json
+# Lock files
+package-lock.json
 # bun.lockb

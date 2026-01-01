@@ -25,6 +25,9 @@ const DiagnosticCode = {
 
   // bind:this related - svelte2tsx infers component instance as SvelteComponent
   PROPERTY_MISSING: 2741,
+
+  // Store related - should NOT be filtered even in ignore regions
+  NO_OVERLOAD_MATCHES_CALL: 2769, // Invalid store usage (e.g., $page instead of page)
 } as const;
 
 /** Generated variable pattern (Svelte 5 internal variables) */
@@ -33,6 +36,9 @@ const generatedVarRegex = /'\$\$_\w+(\.\$on)?'/;
 /** Ignore region markers */
 const IGNORE_START = '/*Ωignore_startΩ*/';
 const IGNORE_END = '/*Ωignore_endΩ*/';
+
+/** Store getter function pattern from svelte2tsx */
+const STORE_GET_PATTERN = '__sveltets_2_store_get(';
 
 /**
  * Apply all filtering rules to remove false positives
@@ -46,7 +52,15 @@ export function filterFalsePositives(
     if (!content) return true; // Can't filter without content, keep it
 
     // 1. Ignore errors inside ignore regions
+    // Exception: Store-related errors (TS2769) should be kept even in ignore regions
     if (isInGeneratedCode(content, d)) {
+      // Check if this is a store-related error that should be preserved
+      if (d.code === DiagnosticCode.NO_OVERLOAD_MATCHES_CALL) {
+        if (isStoreVariableInStoreDeclaration(content, d)) {
+          // Keep this error - it's a real store usage error
+          return true;
+        }
+      }
       return false;
     }
 
@@ -95,6 +109,37 @@ export function filterFalsePositives(
 
     return true;
   });
+}
+
+/**
+ * Check if error is from a store variable in $store declaration
+ * Ported from svelte-check's isStoreVariableIn$storeDeclaration
+ *
+ * In svelte2tsx, `$page` is converted to:
+ * `let $page = __sveltets_2_store_get(page);`
+ *
+ * If `page` is not a valid store, TS2769 error occurs at the `page` position
+ * inside `__sveltets_2_store_get(page)`.
+ */
+function isStoreVariableInStoreDeclaration(content: string, d: Diagnostic): boolean {
+  const lines = content.split('\n');
+
+  // Calculate character offset up to the error position
+  let offset = 0;
+  for (let i = 0; i < d.line - 1 && i < lines.length; i++) {
+    const line = lines[i];
+    if (line !== undefined) {
+      offset += line.length + 1; // +1 for newline
+    }
+  }
+  offset += d.column - 1;
+
+  // Check if the position is right after `__sveltets_2_store_get(`
+  const expectedStart = offset - STORE_GET_PATTERN.length;
+  if (expectedStart < 0) return false;
+
+  const preceding = content.substring(expectedStart, offset);
+  return preceding === STORE_GET_PATTERN;
 }
 
 /**
