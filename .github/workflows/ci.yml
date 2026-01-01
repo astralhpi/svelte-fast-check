@@ -19,4 +19,9 @@ jobs:
 
       - run: bun install
       - run: bun run build
+      - name: Install test fixture dependencies
+        run: |
+          cd tests/fixtures/valid-project && bun install
+          cd ../error-project && bun install
+          cd ../store-error-project && bun install
       - run: bun test
