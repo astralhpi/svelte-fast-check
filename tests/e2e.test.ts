@@ -108,16 +108,13 @@ describe('svelte-fast-check E2E', () => {
 
       // When using $page but page doesn't have subscribe method:
       // - TS2769 occurs at __sveltets_2_store_get(page) in ignore region
-      // - TS18046 occurs at $page usage location (mapped to original)
-      //
-      // TS2769 is kept by filter but can't be sourcemap-mapped (in generated code)
-      // TS18046 is the user-facing error at the actual usage location
+      // - We find $page usage location and map the error there
       const storeErrors = result.diagnostics.filter(
-        (d) => d.code === 18046 && d.originalFile.endsWith('.svelte')
+        (d) => d.code === 2769 && d.originalFile.endsWith('.svelte')
       );
 
       expect(storeErrors.length).toBeGreaterThan(0);
-      expect(storeErrors[0].message).toContain('unknown');
+      expect(storeErrors[0].message).toContain('store');
     });
 
     test('should not filter store errors even in ignore regions', async () => {

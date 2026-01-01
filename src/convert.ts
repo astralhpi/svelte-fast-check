@@ -11,7 +11,12 @@ import { statSync, mkdirSync, existsSync, unlinkSync, readFileSync } from 'fs';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { globSync } from 'glob';
 import { resolve, dirname, relative } from 'path';
+import { createRequire } from 'module';
 import type { ConversionResult, FastCheckConfig, SourceMapData } from './types';
+
+// Get svelte2tsx package path (from svelte-fast-check's own dependencies)
+const require = createRequire(import.meta.url);
+const svelte2tsxPath = dirname(require.resolve('svelte2tsx/package.json'));
 
 /** .fast-check folder path (relative to project root) */
 const DEFAULT_CACHE_ROOT = '.fast-check';
@@ -341,10 +346,11 @@ export async function generateTsconfig(
     },
 
     // svelte2tsx shims + app.d.ts for DOM type overrides
+    // Use absolute paths to svelte2tsx from svelte-fast-check's dependencies
     files: [
       '../src/app.d.ts',
-      '../../../node_modules/svelte2tsx/svelte-shims-v4.d.ts',
-      '../../../node_modules/svelte2tsx/svelte-jsx-v4.d.ts',
+      resolve(svelte2tsxPath, 'svelte-shims-v4.d.ts'),
+      resolve(svelte2tsxPath, 'svelte-jsx-v4.d.ts'),
     ],
 
     include: [

@@ -13,6 +13,12 @@ import type { Diagnostic, MappedDiagnostic, SourceMapData } from './types';
 const CACHE_ROOT = '.fast-check';
 const TSX_DIR = 'tsx';
 
+/** Store getter function pattern from svelte2tsx */
+const STORE_GET_PATTERN = '__sveltets_2_store_get(';
+
+/** TS error code for store errors */
+const TS_NO_OVERLOAD_MATCHES = 2769;
+
 /**
  * Extract original svelte path from tsx path
  * .fast-check/tsx/src/routes/+layout.svelte.tsx -> src/routes/+layout.svelte
@@ -43,12 +49,13 @@ export function tsxPathToOriginal(rootDir: string, tsxPath: string): string {
 export function mapDiagnostics(
   diagnostics: Diagnostic[],
   sourcemaps: Map<string, SourceMapData>,
-  rootDir: string
+  rootDir: string,
+  tsxContents?: Map<string, string>
 ): MappedDiagnostic[] {
   const mapped: MappedDiagnostic[] = [];
 
   for (const d of diagnostics) {
-    const result = mapDiagnostic(d, sourcemaps, rootDir);
+    const result = mapDiagnostic(d, sourcemaps, rootDir, tsxContents);
     if (result) {
       mapped.push(result);
     }
@@ -63,7 +70,8 @@ export function mapDiagnostics(
 function mapDiagnostic(
   d: Diagnostic,
   sourcemaps: Map<string, SourceMapData>,
-  rootDir: string
+  rootDir: string,
+  tsxContents?: Map<string, string>
 ): MappedDiagnostic | null {
   // Only .svelte.tsx files need mapping
   if (!d.file.endsWith('.svelte.tsx')) {
@@ -104,6 +112,22 @@ function mapDiagnostic(
 
     if (original.line === null || original.column === null) {
       // Mapping failed - likely generated code
+      // For store errors (TS2769), try to find $store usage in nearby mapped range
+      if (d.code === TS_NO_OVERLOAD_MATCHES && tsxContents) {
+        const content = tsxContents.get(d.file);
+        if (content) {
+          const storeLocation = findStoreUsageLocation(content, d, tracer);
+          if (storeLocation) {
+            return {
+              ...d,
+              originalFile,
+              originalLine: storeLocation.line,
+              originalColumn: storeLocation.column,
+              message: `Cannot use as a store. Needs to be an object with a subscribe method.\n${d.message}`,
+            };
+          }
+        }
+      }
       return null;
     }
 
@@ -124,4 +148,53 @@ function mapDiagnostic(
  */
 export function filterNegativeLines(diagnostics: MappedDiagnostic[]): MappedDiagnostic[] {
   return diagnostics.filter((d) => d.originalLine > 0 && d.originalColumn > 0);
+}
+
+/**
+ * Find $store usage location for store errors
+ *
+ * When TS2769 occurs at __sveltets_2_store_get(storeName), we extract storeName
+ * and find the $storeName usage location by searching nearby mapped positions.
+ */
+function findStoreUsageLocation(
+  content: string,
+  d: Diagnostic,
+  tracer: TraceMap
+): { line: number; column: number } | null {
+  const lines = content.split('\n');
+  const errorLine = lines[d.line - 1];
+  if (!errorLine) return null;
+
+  // Extract store name from __sveltets_2_store_get(storeName)
+  const storeGetIndex = errorLine.lastIndexOf(STORE_GET_PATTERN, d.column);
+  if (storeGetIndex === -1) return null;
+
+  const afterPattern = errorLine.slice(storeGetIndex + STORE_GET_PATTERN.length);
+  const storeNameMatch = afterPattern.match(/^(\w+)/);
+  if (!storeNameMatch) return null;
+
+  const storeName = storeNameMatch[1];
+  const $storeName = '$' + storeName;
+
+  // Search for $storeName usage in lines after the declaration
+  // Start from line after the error (store declaration is usually at top)
+  for (let lineIdx = d.line; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
+    if (!line) continue;
+
+    const $storeIndex = line.indexOf($storeName);
+    if ($storeIndex === -1) continue;
+
+    // Try to map this position to original
+    const mapped = originalPositionFor(tracer, {
+      line: lineIdx + 1,
+      column: $storeIndex,
+    });
+
+    if (mapped.line !== null && mapped.column !== null) {
+      return { line: mapped.line, column: mapped.column + 1 };
+    }
+  }
+
+  return null;
 }

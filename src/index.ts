@@ -176,7 +176,7 @@ export async function runFastCheck(
   const mapStart = performance.now();
 
   const sourcemaps = buildSourcemapMap(results);
-  let mapped = mapDiagnostics(diagnostics, sourcemaps, config.rootDir);
+  let mapped = mapDiagnostics(diagnostics, sourcemaps, config.rootDir, tsxContents);
   mapped = filterNegativeLines(mapped);
 
   const mapTime = Math.round(performance.now() - mapStart);
