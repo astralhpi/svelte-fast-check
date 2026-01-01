@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "tsup",
+    "test": "bun test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "prepublishOnly": "npm run build"

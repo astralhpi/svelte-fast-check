@@ -21,6 +21,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Agent context
+CONTEXT.md
+
 # Lock files (optional - remove if you want to commit)
 # package-lock.json
 # bun.lockb
