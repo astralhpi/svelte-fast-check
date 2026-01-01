@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "svelte-fast-check": "./dist/cli.js"
+    "svelte-fast-check": "dist/cli.js"
   },
   "exports": {
     ".": {
