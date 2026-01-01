@@ -114,7 +114,15 @@ describe('svelte-fast-check E2E', () => {
       );
 
       expect(storeErrors.length).toBeGreaterThan(0);
-      expect(storeErrors[0].message).toContain('store');
+
+      // Should point to line 10 where $page is actually used (not comments)
+      // Line 10: const currentPath = $page.url.pathname;
+      expect(storeErrors[0].originalLine).toBe(10);
+      expect(storeErrors[0].originalColumn).toBe(23);
+
+      // Message should match svelte-check format
+      expect(storeErrors[0].message).toContain("Cannot use 'page' as a store");
+      expect(storeErrors[0].message).toContain('subscribe');
     });
 
     test('should not filter store errors even in ignore regions', async () => {

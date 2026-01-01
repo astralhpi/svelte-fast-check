@@ -123,7 +123,7 @@ function mapDiagnostic(
               originalFile,
               originalLine: storeLocation.line,
               originalColumn: storeLocation.column,
-              message: `Cannot use as a store. Needs to be an object with a subscribe method.\n${d.message}`,
+              message: `Cannot use '${storeLocation.storeName}' as a store. '${storeLocation.storeName}' needs to be an object with a subscribe method on it.\n\n${d.message}`,
             };
           }
         }
@@ -160,7 +160,7 @@ function findStoreUsageLocation(
   content: string,
   d: Diagnostic,
   tracer: TraceMap
-): { line: number; column: number } | null {
+): { line: number; column: number; storeName: string } | null {
   const lines = content.split('\n');
   const errorLine = lines[d.line - 1];
   if (!errorLine) return null;
@@ -178,21 +178,62 @@ function findStoreUsageLocation(
 
   // Search for $storeName usage in lines after the declaration
   // Start from line after the error (store declaration is usually at top)
+  // Skip occurrences in comments (// single-line or /* multi-line */)
+  let inMultiLineComment = false;
+
   for (let lineIdx = d.line; lineIdx < lines.length; lineIdx++) {
     const line = lines[lineIdx];
     if (!line) continue;
 
-    const $storeIndex = line.indexOf($storeName);
+    // Track multi-line comment state
+    let searchLine = line;
+    let columnOffset = 0;
+
+    // Handle multi-line comment continuation
+    if (inMultiLineComment) {
+      const endIdx = line.indexOf('*/');
+      if (endIdx === -1) continue; // Still in comment
+      inMultiLineComment = false;
+      searchLine = line.slice(endIdx + 2);
+      columnOffset = endIdx + 2;
+    }
+
+    // Skip single-line comments
+    const singleCommentIdx = searchLine.indexOf('//');
+    if (singleCommentIdx !== -1) {
+      searchLine = searchLine.slice(0, singleCommentIdx);
+    }
+
+    // Handle multi-line comment start
+    const multiStartIdx = searchLine.indexOf('/*');
+    if (multiStartIdx !== -1) {
+      const multiEndIdx = searchLine.indexOf('*/', multiStartIdx);
+      if (multiEndIdx === -1) {
+        // Comment continues to next line
+        inMultiLineComment = true;
+        searchLine = searchLine.slice(0, multiStartIdx);
+      } else {
+        // Comment ends on same line - remove it
+        searchLine = searchLine.slice(0, multiStartIdx) + searchLine.slice(multiEndIdx + 2);
+      }
+    }
+
+    // Search for $storeName in non-comment portion
+    const $storeIndex = searchLine.indexOf($storeName);
     if ($storeIndex === -1) continue;
+
+    // Verify it's not followed by word characters (exact match)
+    const afterChar = searchLine[$storeIndex + $storeName.length];
+    if (afterChar && /\w/.test(afterChar)) continue;
 
     // Try to map this position to original
     const mapped = originalPositionFor(tracer, {
       line: lineIdx + 1,
-      column: $storeIndex,
+      column: columnOffset + $storeIndex,
     });
 
     if (mapped.line !== null && mapped.column !== null) {
-      return { line: mapped.line, column: mapped.column + 1 };
+      return { line: mapped.line, column: mapped.column + 1, storeName };
     }
   }
 
