@@ -106,6 +106,16 @@ describe('svelte-fast-check E2E', () => {
 
       const result = await runFastCheck(config, { quiet: true });
 
+      // Debug: print all diagnostics
+      console.log(
+        'All diagnostics:',
+        result.diagnostics.map((d) => ({
+          code: d.code,
+          file: d.originalFile,
+          msg: d.message.slice(0, 50),
+        }))
+      );
+
       // When using $page but page doesn't have subscribe method:
       // - TS2769 occurs at __sveltets_2_store_get(page) in ignore region
       // - TS18046 occurs at $page usage location (mapped to original)
@@ -140,6 +150,12 @@ describe('svelte-fast-check E2E', () => {
 
       // Raw mode shows unfiltered, unmapped diagnostics
       const result = await runFastCheck(config, { quiet: true, raw: true });
+
+      // Debug: print all raw diagnostics
+      console.log(
+        'Raw diagnostics:',
+        result.diagnostics.map((d) => ({ code: d.code, file: d.file, msg: d.message.slice(0, 50) }))
+      );
 
       // TS2769 should be present in raw output (before sourcemap mapping)
       const storeErrors = result.diagnostics.filter((d) => d.code === 2769);
