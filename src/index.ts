@@ -11,6 +11,7 @@ export type {
   MappedDiagnostic,
   ConversionResult,
   SourceMapData,
+  SvelteWarning,
 } from './types';
 
 export {
@@ -30,6 +31,8 @@ export { mapDiagnostics, filterNegativeLines, tsxPathToOriginal } from './mapper
 
 export { formatDiagnostic, printDiagnostics, printSummary, printRawDiagnostics } from './reporter';
 
+export { collectAllSvelteWarnings, collectChangedSvelteWarnings } from './compiler';
+
 import { spawnSync } from 'child_process';
 import { createRequire } from 'module';
 
@@ -46,7 +49,7 @@ function getTsgoPath(): string {
     return 'tsgo';
   }
 }
-import type { FastCheckConfig, CheckResult } from './types';
+import type { FastCheckConfig, CheckResult, MappedDiagnostic } from './types';
 import {
   convertAllSvelteFiles,
   convertChangedFiles,
@@ -57,6 +60,7 @@ import { parseTscOutput, countDiagnostics } from './parser';
 import { filterFalsePositives, loadTsxContents, extractTsxFiles } from './filter';
 import { mapDiagnostics, filterNegativeLines } from './mapper';
 import { printDiagnostics, printSummary, printRawDiagnostics } from './reporter';
+import { collectAllSvelteWarnings, collectChangedSvelteWarnings } from './compiler';
 
 export interface FastCheckOptions {
   /** Incremental mode (convert only changed files) */
@@ -65,6 +69,8 @@ export interface FastCheckOptions {
   raw?: boolean;
   /** Quiet mode (suppress progress output) */
   quiet?: boolean;
+  /** Enable svelte compiler warnings (default: true) */
+  svelteWarnings?: boolean;
 }
 
 /**
@@ -74,15 +80,110 @@ export async function runFastCheck(
   config: FastCheckConfig,
   options: FastCheckOptions = {}
 ): Promise<CheckResult> {
-  const { incremental = false, raw = false, quiet = false } = options;
+  const { incremental = false, raw = false, quiet = false, svelteWarnings = true } = options;
   const startTime = performance.now();
 
   const log = quiet ? () => {} : console.log.bind(console);
 
-  log('🔍 svelte-fast-check: Starting type check (tsgo)...\n');
+  log('🔍 svelte-fast-check: Starting type check...\n');
+
+  // Run both pipelines in parallel
+  const [typeCheckResult, svelteWarningsResult] = await Promise.all([
+    // Pipeline 1: Type checking (svelte2tsx -> tsgo)
+    runTypeCheckPipeline(config, { incremental, raw, quiet }),
+    // Pipeline 2: Svelte compiler warnings
+    svelteWarnings
+      ? runSvelteWarningsPipeline(config, { incremental, quiet })
+      : Promise.resolve({ diagnostics: [], duration: 0 }),
+  ]);
+
+  const totalTime = Math.round(performance.now() - startTime);
+
+  if (raw) {
+    // Raw mode: output without filtering/mapping
+    const diagnostics = typeCheckResult.diagnostics;
+    const { errorCount, warningCount } = countDiagnostics(diagnostics);
+
+    if (!quiet && diagnostics.length > 0) {
+      log('📋 Diagnostics (raw):\n');
+      printRawDiagnostics(diagnostics);
+      log();
+    }
+
+    if (!quiet) {
+      log('─'.repeat(60));
+      if (errorCount === 0 && warningCount === 0) {
+        log('✅ No problems found');
+      } else {
+        const parts: string[] = [];
+        if (errorCount > 0) parts.push(`${errorCount} error(s)`);
+        if (warningCount > 0) parts.push(`${warningCount} warning(s)`);
+        log(`❌ Found ${parts.join(' and ')}`);
+      }
+      log(`⏱️  Total time: ${totalTime}ms`);
+    }
+
+    return {
+      diagnostics: diagnostics.map((d) => ({
+        ...d,
+        originalFile: d.file,
+        originalLine: d.line,
+        originalColumn: d.column,
+      })),
+      errorCount,
+      warningCount,
+      duration: totalTime,
+    };
+  }
+
+  // Merge diagnostics from both pipelines
+  const allDiagnostics = [
+    ...typeCheckResult.diagnostics,
+    ...svelteWarningsResult.diagnostics,
+  ];
+
+  const { errorCount, warningCount } = countDiagnostics(allDiagnostics);
+
+  const result: CheckResult = {
+    diagnostics: allDiagnostics,
+    errorCount,
+    warningCount,
+    duration: totalTime,
+  };
+
+  if (!quiet) {
+    if (allDiagnostics.length > 0) {
+      log('📋 Diagnostics:\n');
+      printDiagnostics(allDiagnostics, config.rootDir);
+    }
+
+    printSummary(result);
+    log(
+      `   (typeCheck: ${typeCheckResult.duration}ms, svelteWarnings: ${svelteWarningsResult.duration}ms)`
+    );
+  }
+
+  return result;
+}
+
+interface PipelineResult {
+  diagnostics: MappedDiagnostic[];
+  duration: number;
+}
+
+/**
+ * Pipeline 1: Type checking with svelte2tsx + tsgo
+ */
+async function runTypeCheckPipeline(
+  config: FastCheckConfig,
+  options: { incremental: boolean; raw: boolean; quiet: boolean }
+): Promise<PipelineResult> {
+  const { incremental, raw, quiet } = options;
+  const startTime = performance.now();
+  const log = quiet ? () => {} : console.log.bind(console);
 
   // Step 1: svelte2tsx conversion
-  log('📦 Step 1: Converting .svelte to .svelte.tsx...');
+  log('📦 Converting .svelte to .svelte.tsx...');
   const convertStart = performance.now();
 
   const results = incremental
@@ -103,7 +204,7 @@ export async function runFastCheck(
   }
 
   // Step 2: Generate dynamic tsconfig & run tsgo
-  log('🔎 Step 2: Running tsgo type check...');
+  log('🔎 Running tsgo type check...');
   const tscStart = performance.now();
 
   const tsconfigPath = await generateTsconfig(config, { incremental });
@@ -123,45 +224,18 @@ export async function runFastCheck(
   const output = (tscResult.stdout ?? '') + (tscResult.stderr ?? '');
   let diagnostics = parseTscOutput(output);
 
+  // Add source marker
+  diagnostics = diagnostics.map((d) => ({ ...d, source: 'ts' as const }));
+
   if (raw) {
-    // Raw mode: output without filtering/mapping
-    const { errorCount, warningCount } = countDiagnostics(diagnostics);
-    const totalTime = Math.round(performance.now() - startTime);
-
-    if (!quiet && diagnostics.length > 0) {
-      log('📋 Diagnostics (raw):\n');
-      printRawDiagnostics(diagnostics);
-      log();
-    }
-
-    if (!quiet) {
-      log('─'.repeat(60));
-      if (errorCount === 0 && warningCount === 0) {
-        log('✅ No problems found');
-      } else {
-        const parts: string[] = [];
-        if (errorCount > 0) parts.push(`${errorCount} error(s)`);
-        if (warningCount > 0) parts.push(`${warningCount} warning(s)`);
-        log(`❌ Found ${parts.join(' and ')}`);
-      }
-      log(`⏱️  Total time: ${totalTime}ms (convert: ${convertTime}ms, tsc: ${tscTime}ms)`);
-    }
-
     return {
-      diagnostics: diagnostics.map((d) => ({
-        ...d,
-        originalFile: d.file,
-        originalLine: d.line,
-        originalColumn: d.column,
-      })),
-      errorCount,
-      warningCount,
-      duration: totalTime,
+      diagnostics: diagnostics as unknown as MappedDiagnostic[],
+      duration: Math.round(performance.now() - startTime),
     };
   }
 
   // Step 4: Filter false positives
-  log('🔧 Step 3: Filtering false positives...');
+  log('🔧 Filtering false positives...');
   const filterStart = performance.now();
 
   const tsxFiles = extractTsxFiles(diagnostics);
@@ -172,7 +246,7 @@ export async function runFastCheck(
   log(`   Done in ${filterTime}ms\n`);
 
   // Step 5: Sourcemap mapping
-  log('🗺️  Step 4: Mapping to original locations...');
+  log('🗺️  Mapping to original locations...');
   const mapStart = performance.now();
 
   const sourcemaps = buildSourcemapMap(results);
@@ -182,28 +256,31 @@ export async function runFastCheck(
   const mapTime = Math.round(performance.now() - mapStart);
   log(`   Done in ${mapTime}ms\n`);
 
-  // Step 6: Output results
-  const { errorCount, warningCount } = countDiagnostics(mapped);
-  const totalTime = Math.round(performance.now() - startTime);
-
-  const result: CheckResult = {
+  return {
     diagnostics: mapped,
-    errorCount,
-    warningCount,
-    duration: totalTime,
+    duration: Math.round(performance.now() - startTime),
   };
+}
 
-  if (!quiet) {
-    if (mapped.length > 0) {
-      log('📋 Diagnostics:\n');
-      printDiagnostics(mapped, config.rootDir);
-    }
+/**
+ * Pipeline 2: Svelte compiler warnings
+ */
+async function runSvelteWarningsPipeline(
+  config: FastCheckConfig,
+  options: { incremental: boolean; quiet: boolean }
+): Promise<PipelineResult> {
+  const { incremental, quiet } = options;
+  const startTime = performance.now();
+  const log = quiet ? () => {} : console.log.bind(console);
 
-    printSummary(result);
-    log(
-      `   (convert: ${convertTime}ms, tsgo: ${tscTime}ms, filter: ${filterTime}ms, map: ${mapTime}ms)`
-    );
-  }
+  log('⚡ Collecting svelte compiler warnings...');
 
-  return result;
+  const diagnostics = incremental
+    ? await collectChangedSvelteWarnings(config)
+    : await collectAllSvelteWarnings(config);
+
+  const duration = Math.round(performance.now() - startTime);
+  log(`   Done in ${duration}ms\n`);
+
+  return { diagnostics, duration };
 }

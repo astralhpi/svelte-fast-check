@@ -5,6 +5,7 @@
  *   svelte-fast-check                    # basic run
  *   svelte-fast-check --incremental      # convert only changed files (recommended)
  *   svelte-fast-check --raw              # raw output without filtering/mapping
+ *   svelte-fast-check --no-svelte-warnings  # skip svelte compiler warnings
  *   svelte-fast-check --config ./svelte-fast-check.config.ts  # specify config file
  */
 
@@ -21,6 +22,9 @@ async function main() {
   const incremental = args.includes('--incremental') || args.includes('-i');
 
   const rawMode = args.includes('--raw') || args.includes('-r');
+
+  // --no-svelte-warnings: disable svelte compiler warnings
+  const svelteWarnings = !args.includes('--no-svelte-warnings');
 
   // find config file
   const configIndex = args.findIndex((a) => a === '--config' || a === '-c');
@@ -59,7 +63,7 @@ async function main() {
     }
   }
 
-  const result = await runFastCheck(config, { incremental, raw: rawMode });
+  const result = await runFastCheck(config, { incremental, raw: rawMode, svelteWarnings });
 
   // exit with code 1 if there are errors
   if (result.errorCount > 0) {

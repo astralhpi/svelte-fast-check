@@ -83,6 +83,10 @@ function getCodeSnippet(
  * Error: Cannot find name 'foo'. (ts)
  *   let x: string = 123;
  * >       ^
+ *
+ * For svelte warnings:
+ * /path/to/file.svelte:10:5
+ * Warning: This reference only captures... (svelte)
  */
 export function formatDiagnostic(d: MappedDiagnostic, rootDir: string): string {
   const location = `${colors.cyan}${d.originalFile}:${d.originalLine}:${d.originalColumn}${colors.reset}`;
@@ -90,7 +94,12 @@ export function formatDiagnostic(d: MappedDiagnostic, rootDir: string): string {
     d.severity === 'error'
       ? `${colors.red}${colors.bold}Error${colors.reset}`
       : `${colors.yellow}Warning${colors.reset}`;
-  const code = `${colors.gray}(ts${d.code})${colors.reset}`;
+
+  // Format code based on source
+  const code =
+    d.source === 'svelte'
+      ? `${colors.gray}(svelte)${colors.reset}`
+      : `${colors.gray}(ts${d.code})${colors.reset}`;
 
   const header = `${location}\n${severity}: ${d.message} ${code}`;
 

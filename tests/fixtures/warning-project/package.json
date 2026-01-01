@@ -1,0 +1,8 @@
+{
+  "name": "warning-project",
+  "version": "1.0.0",
+  "type": "module",
+  "devDependencies": {
+    "svelte": "^5.46.1"
+  }
+}

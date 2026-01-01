@@ -35,12 +35,14 @@ export interface Diagnostic {
   line: number;
   /** 1-based column number */
   column: number;
-  /** TS error code (e.g., 2304) */
+  /** TS error code (e.g., 2304), 0 for svelte warnings */
   code: number;
   /** Error message */
   message: string;
   /** Severity */
   severity: 'error' | 'warning';
+  /** Source of the diagnostic */
+  source?: 'ts' | 'svelte';
 }
 
 /** Mapped diagnostic (original .svelte location) */
@@ -51,6 +53,30 @@ export interface MappedDiagnostic extends Diagnostic {
   originalLine: number;
   /** Original 1-based column number */
   originalColumn: number;
+}
+
+/** Svelte compiler warning (from svelte.compile) */
+export interface SvelteWarning {
+  /** Warning code (e.g., 'state_referenced_locally') */
+  code: string;
+  /** Warning message */
+  message: string;
+  /** File path */
+  filename: string;
+  /** Start position */
+  start: {
+    line: number;
+    column: number;
+    character: number;
+  };
+  /** End position */
+  end: {
+    line: number;
+    column: number;
+    character: number;
+  };
+  /** Code frame */
+  frame?: string;
 }
 
 /** svelte-fast-check execution result */

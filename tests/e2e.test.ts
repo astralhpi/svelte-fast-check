@@ -1,6 +1,6 @@
 import { describe, test, expect, afterAll } from 'bun:test';
 import { resolve } from 'path';
-import { rmSync } from 'fs';
+import { rmSync, writeFileSync, readFileSync } from 'fs';
 import { runFastCheck } from '../src/index';
 import type { FastCheckConfig } from '../src/types';
 
@@ -151,6 +151,115 @@ describe('svelte-fast-check E2E', () => {
 
       expect(storeErrors.length).toBeGreaterThan(0);
       expect(storeErrors[0].message).toContain('overload');
+    });
+  });
+
+  describe('warning-project (svelte compiler warnings)', () => {
+    const projectDir = resolve(fixturesDir, 'warning-project');
+
+    afterAll(() => {
+      cleanupCache(projectDir);
+    });
+
+    test('should detect state_referenced_locally warning', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+
+      const result = await runFastCheck(config, { quiet: true });
+
+      // Should have svelte compiler warning
+      const svelteWarnings = result.diagnostics.filter(
+        (d) => d.code === 0 && d.message.includes('state_referenced_locally')
+      );
+
+      expect(svelteWarnings.length).toBeGreaterThan(0);
+      expect(svelteWarnings[0].originalFile).toContain('App.svelte');
+      expect(svelteWarnings[0].originalLine).toBe(7);
+      expect(svelteWarnings[0].severity).toBe('warning');
+    });
+
+    test('should include svelte warning code in message', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+
+      const result = await runFastCheck(config, { quiet: true });
+
+      const svelteWarnings = result.diagnostics.filter(
+        (d) => d.message.includes('state_referenced_locally')
+      );
+
+      expect(svelteWarnings.length).toBeGreaterThan(0);
+      // Message should contain the warning code and docs link
+      expect(svelteWarnings[0].message).toContain('https://svelte.dev/e/state_referenced_locally');
+    });
+
+    test('should skip svelte warnings with --no-svelte-warnings', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+
+      const result = await runFastCheck(config, { quiet: true, svelteWarnings: false });
+
+      // Should have no svelte compiler warnings
+      const svelteWarnings = result.diagnostics.filter(
+        (d) => d.message.includes('state_referenced_locally')
+      );
+
+      expect(svelteWarnings.length).toBe(0);
+    });
+
+    test('incremental mode should use cache and invalidate on file change', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+
+      const appPath = resolve(projectDir, 'src/App.svelte');
+      const originalContent = readFileSync(appPath, 'utf-8');
+
+      try {
+        // First run - should compile and cache
+        const result1 = await runFastCheck(config, { quiet: true, incremental: true });
+        const warnings1 = result1.diagnostics.filter((d) => d.source === 'svelte');
+        expect(warnings1.length).toBe(1);
+        expect(warnings1[0].message).toContain('state_referenced_locally');
+
+        // Second run - should use cache (same result)
+        const result2 = await runFastCheck(config, { quiet: true, incremental: true });
+        const warnings2 = result2.diagnostics.filter((d) => d.source === 'svelte');
+        expect(warnings2.length).toBe(1);
+
+        // Modify file to fix the warning
+        const fixedContent = `<script lang="ts">
+  let count = $state(0);
+  
+  // GOOD: Use $derived for reactive values
+  let doubled = $derived(count * 2);
+  
+  function increment() {
+    count += 1;
+  }
+</script>
+
+<button onclick={increment}>
+  Count: {count}, Doubled: {doubled}
+</button>
+`;
+        writeFileSync(appPath, fixedContent);
+
+        // Third run - cache should be invalidated, no warnings
+        const result3 = await runFastCheck(config, { quiet: true, incremental: true });
+        const warnings3 = result3.diagnostics.filter((d) => d.source === 'svelte');
+        expect(warnings3.length).toBe(0);
+      } finally {
+        // Restore original content
+        writeFileSync(appPath, originalContent);
+      }
     });
   });
 });
