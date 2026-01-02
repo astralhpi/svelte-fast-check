@@ -1,6 +1,6 @@
 {
   "name": "svelte-fast-check",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Up to 24x faster type checker for Svelte/SvelteKit projects using svelte2tsx + tsgo",
   "type": "module",
   "main": "./dist/index.js",
