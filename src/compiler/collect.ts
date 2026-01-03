@@ -5,27 +5,34 @@
  * Runs in parallel with the type checking pipeline.
  */
 
-import { compile } from 'svelte/compiler';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync, statSync, readFileSync, mkdirSync } from 'fs';
-import { resolve, dirname, relative } from 'path';
-import type { FastCheckConfig, MappedDiagnostic, SvelteWarning } from '../types';
-import { findSvelteFiles } from '../typecheck/convert';
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
+import { compile } from "svelte/compiler";
+import { findSvelteFiles } from "../typecheck/convert";
+import type {
+  FastCheckConfig,
+  MappedDiagnostic,
+  SvelteWarning,
+} from "../types";
 
 /** Cache directory for warnings */
-const WARNINGS_DIR = 'warnings';
+const WARNINGS_DIR = "warnings";
 
 /** Get warnings cache path for a source file */
-function getWarningsCachePath(config: FastCheckConfig, sourcePath: string): string {
-  const cacheRoot = config.cacheDir || '.fast-check';
+function getWarningsCachePath(
+  config: FastCheckConfig,
+  sourcePath: string,
+): string {
+  const cacheRoot = config.cacheDir || ".fast-check";
   const relativePath = relative(config.rootDir, sourcePath);
-  const safeName = relativePath.replace(/[/\\]/g, '_');
-  return resolve(config.rootDir, cacheRoot, WARNINGS_DIR, safeName + '.json');
+  const safeName = relativePath.replace(/[/\\]/g, "_");
+  return resolve(config.rootDir, cacheRoot, WARNINGS_DIR, `${safeName}.json`);
 }
 
 /** Ensure warnings cache directory exists */
 function ensureWarningsCacheDir(config: FastCheckConfig): void {
-  const cacheRoot = config.cacheDir || '.fast-check';
+  const cacheRoot = config.cacheDir || ".fast-check";
   const warningsDir = resolve(config.rootDir, cacheRoot, WARNINGS_DIR);
 
   if (!existsSync(warningsDir)) {
@@ -58,7 +65,10 @@ function getSvelteWarnings(filePath: string, content: string): SvelteWarning[] {
 /**
  * Convert SvelteWarning to MappedDiagnostic
  */
-function warningToDiagnostic(warning: SvelteWarning, rootDir: string): MappedDiagnostic {
+function warningToDiagnostic(
+  warning: SvelteWarning,
+  rootDir: string,
+): MappedDiagnostic {
   const relativePath = warning.filename.startsWith(rootDir)
     ? relative(rootDir, warning.filename)
     : warning.filename;
@@ -72,8 +82,8 @@ function warningToDiagnostic(warning: SvelteWarning, rootDir: string): MappedDia
     column,
     code: 0, // Svelte warnings don't have numeric codes
     message: warning.message,
-    severity: 'warning',
-    source: 'svelte',
+    severity: "warning",
+    source: "svelte",
     originalFile: relativePath,
     originalLine: warning.start.line,
     originalColumn: column,
@@ -84,7 +94,7 @@ function warningToDiagnostic(warning: SvelteWarning, rootDir: string): MappedDia
  * Collect warnings from all svelte files (parallel)
  */
 export async function collectAllSvelteWarnings(
-  config: FastCheckConfig
+  config: FastCheckConfig,
 ): Promise<MappedDiagnostic[]> {
   const files = findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
@@ -92,10 +102,10 @@ export async function collectAllSvelteWarnings(
   const results = await Promise.all(
     files.map(async (file) => {
       const sourcePath = resolve(config.rootDir, file);
-      const content = await readFile(sourcePath, 'utf-8');
+      const content = await readFile(sourcePath, "utf-8");
       const warnings = getSvelteWarnings(sourcePath, content);
       return warnings.map((w) => warningToDiagnostic(w, config.rootDir));
-    })
+    }),
   );
 
   for (const result of results) {
@@ -109,7 +119,7 @@ export async function collectAllSvelteWarnings(
  * Collect warnings with incremental caching (only process changed files)
  */
 export async function collectChangedSvelteWarnings(
-  config: FastCheckConfig
+  config: FastCheckConfig,
 ): Promise<MappedDiagnostic[]> {
   ensureWarningsCacheDir(config);
 
@@ -127,10 +137,14 @@ export async function collectChangedSvelteWarnings(
         const sourceMtime = sourceStat.mtime.getTime();
 
         try {
-          const cached: CachedWarnings = JSON.parse(readFileSync(cachePath, 'utf-8'));
+          const cached: CachedWarnings = JSON.parse(
+            readFileSync(cachePath, "utf-8"),
+          );
           if (cached.mtime >= sourceMtime) {
             // Cache is valid, use cached warnings
-            return cached.warnings.map((w) => warningToDiagnostic(w, config.rootDir));
+            return cached.warnings.map((w) =>
+              warningToDiagnostic(w, config.rootDir),
+            );
           }
         } catch {
           // Invalid cache, recompile
@@ -138,7 +152,7 @@ export async function collectChangedSvelteWarnings(
       }
 
       // Compile and cache
-      const content = await readFile(sourcePath, 'utf-8');
+      const content = await readFile(sourcePath, "utf-8");
       const warnings = getSvelteWarnings(sourcePath, content);
 
       // Save to cache (store source file's mtime)
@@ -146,14 +160,14 @@ export async function collectChangedSvelteWarnings(
         mtime: statSync(sourcePath).mtime.getTime(),
         warnings,
       };
-      
+
       // Create cache directory (ignore EEXIST for race condition with Promise.all)
       const cacheDir = dirname(cachePath);
       await mkdir(cacheDir, { recursive: true }).catch(() => {});
       await writeFile(cachePath, JSON.stringify(cacheData));
 
       return warnings.map((w) => warningToDiagnostic(w, config.rootDir));
-    })
+    }),
   );
 
   for (const result of results) {

@@ -44,9 +44,9 @@
  *   - Module resolution differences between tsgo and tsc
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import type { Diagnostic } from '../types';
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Diagnostic } from "../types";
 
 /**
  * TS error codes to filter
@@ -99,18 +99,18 @@ const DiagnosticCode = {
 const generatedVarRegex = /'\$\$_\w+(\.\$on)?'/;
 
 /** Ignore region markers */
-const IGNORE_START = '/*Ωignore_startΩ*/';
-const IGNORE_END = '/*Ωignore_endΩ*/';
+const IGNORE_START = "/*Ωignore_startΩ*/";
+const IGNORE_END = "/*Ωignore_endΩ*/";
 
 /** Store getter function pattern from svelte2tsx */
-const STORE_GET_PATTERN = '__sveltets_2_store_get(';
+const STORE_GET_PATTERN = "__sveltets_2_store_get(";
 
 /**
  * Apply all filtering rules to remove false positives
  */
 export function filterFalsePositives(
   diagnostics: Diagnostic[],
-  tsxContents: Map<string, string>
+  tsxContents: Map<string, string>,
 ): Diagnostic[] {
   return diagnostics.filter((d) => {
     const content = tsxContents.get(d.file);
@@ -181,7 +181,7 @@ export function filterFalsePositives(
     // Issue: https://github.com/microsoft/typescript-go/issues/2060
     if (d.code === DiagnosticCode.ARG_TYPE_NOT_ASSIGNABLE) {
       if (
-        d.message.includes('ConstructorOfATypedSvelteComponent') ||
+        d.message.includes("ConstructorOfATypedSvelteComponent") ||
         isInEnsureComponentCall(content, d)
       ) {
         return false;
@@ -197,7 +197,10 @@ export function filterFalsePositives(
       d.code === DiagnosticCode.IMPLICIT_ANY_PARAMETER ||
       d.code === DiagnosticCode.IMPLICIT_ANY_BINDING
     ) {
-      if (d.file.endsWith('.svelte.tsx') && isInComponentPropCallback(content, d)) {
+      if (
+        d.file.endsWith(".svelte.tsx") &&
+        isInComponentPropCallback(content, d)
+      ) {
         return false;
       }
     }
@@ -216,7 +219,7 @@ export function filterFalsePositives(
     // tsc resolves these correctly via svelte2tsx's type definitions.
     // Issue: https://github.com/microsoft/typescript-go/issues/1616
     if (d.code === DiagnosticCode.NO_EXPORTED_MEMBER) {
-      if (d.message.includes('*.svelte')) {
+      if (d.message.includes("*.svelte")) {
         return false;
       }
     }
@@ -235,8 +238,11 @@ export function filterFalsePositives(
  * If `page` is not a valid store, TS2769 error occurs at the `page` position
  * inside `__sveltets_2_store_get(page)`.
  */
-function isStoreVariableInStoreDeclaration(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+function isStoreVariableInStoreDeclaration(
+  content: string,
+  d: Diagnostic,
+): boolean {
+  const lines = content.split("\n");
 
   // Calculate character offset up to the error position
   let offset = 0;
@@ -260,7 +266,7 @@ function isStoreVariableInStoreDeclaration(content: string, d: Diagnostic): bool
  * Check if position is inside ignore region
  */
 function isInGeneratedCode(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
 
   // Calculate character offset up to the line
   let offset = 0;
@@ -301,7 +307,9 @@ function isInGeneratedCode(content: string, d: Diagnostic): boolean {
 function isExportLetProp(content: string, d: Diagnostic): boolean {
   // Extract variable name from error message
   // "Variable 'xxx' is used before being assigned."
-  const match = d.message.match(/Variable '(\w+)' is used before being assigned/);
+  const match = d.message.match(
+    /Variable '(\w+)' is used before being assigned/,
+  );
   if (!match) return false;
 
   const varName = match[1];
@@ -315,7 +323,7 @@ function isExportLetProp(content: string, d: Diagnostic): boolean {
  * Check if position is in JSX attribute (simple heuristic)
  */
 function isInJsxAttribute(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   if (d.line <= 0 || d.line > lines.length) return false;
 
   const line = lines[d.line - 1];
@@ -323,7 +331,7 @@ function isInJsxAttribute(content: string, d: Diagnostic): boolean {
 
   // Error inside < ... > tag
   // Simple check: if line contains < and = or {, assume JSX attribute
-  return line.includes('<') && (line.includes('=') || line.includes('{'));
+  return line.includes("<") && (line.includes("=") || line.includes("{"));
 }
 
 /**
@@ -335,7 +343,7 @@ function isInJsxAttribute(content: string, d: Diagnostic): boolean {
  * This assignment causes type mismatch between SvelteComponent and user-defined type
  */
 function isBindThisAssignment(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   if (d.line <= 0 || d.line > lines.length) return false;
 
   const line = lines[d.line - 1];
@@ -353,13 +361,13 @@ function isBindThisAssignment(content: string, d: Diagnostic): boolean {
  * `const $$_ComponentName = __sveltets_2_ensureComponent(ComponentName);`
  */
 function isInEnsureComponentCall(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   if (d.line <= 0 || d.line > lines.length) return false;
 
   const line = lines[d.line - 1];
   if (line === undefined) return false;
 
-  return line.includes('__sveltets_2_ensureComponent');
+  return line.includes("__sveltets_2_ensureComponent");
 }
 
 /**
@@ -369,7 +377,7 @@ function isInEnsureComponentCall(content: string, d: Diagnostic): boolean {
  * `new $$_Component({ props: { "onclick": value => { ... } } })`
  */
 function isInComponentPropCallback(content: string, d: Diagnostic): boolean {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   if (d.line <= 0 || d.line > lines.length) return false;
 
   const line = lines[d.line - 1];
@@ -377,12 +385,12 @@ function isInComponentPropCallback(content: string, d: Diagnostic): boolean {
 
   // Check context: look back up to 10 lines for component instantiation
   const startLine = Math.max(0, d.line - 10);
-  const contextLines = lines.slice(startLine, d.line).join('\n');
+  const contextLines = lines.slice(startLine, d.line).join("\n");
 
   // Check if we're inside a component instantiation block
   if (
-    contextLines.includes('__sveltets_2_ensureComponent') ||
-    contextLines.includes('new $$_')
+    contextLines.includes("__sveltets_2_ensureComponent") ||
+    contextLines.includes("new $$_")
   ) {
     // Check for arrow function callback pattern on current line
     if (/"\w+":\s*(async\s+)?\(?\s*\w+\s*(,\s*\w+)*\s*\)?\s*=>/.test(line)) {
@@ -395,7 +403,7 @@ function isInComponentPropCallback(content: string, d: Diagnostic): boolean {
   }
 
   // Snippet callbacks: {#snippet name(param)}
-  if (line.includes('#snippet') || /\(\s*\w+\s*\)\s*=>/.test(line)) {
+  if (line.includes("#snippet") || /\(\s*\w+\s*\)\s*=>/.test(line)) {
     return true;
   }
 
@@ -407,7 +415,16 @@ function isInComponentPropCallback(content: string, d: Diagnostic): boolean {
  * These are handled by bundlers like Vite/Webpack
  */
 function isAssetImport(message: string): boolean {
-  const assetExtensions = ['.avif', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'];
+  const assetExtensions = [
+    ".avif",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".svg",
+    ".webp",
+    ".ico",
+  ];
   const match = message.match(/Cannot find module '([^']*)'/);
   if (!match?.[1]) {
     return false;
@@ -419,7 +436,10 @@ function isAssetImport(message: string): boolean {
 /**
  * Load TSX file contents (supports new path structure)
  */
-export function loadTsxContents(files: string[], rootDir: string): Map<string, string> {
+export function loadTsxContents(
+  files: string[],
+  rootDir: string,
+): Map<string, string> {
   const contents = new Map<string, string>();
 
   for (const file of files) {
@@ -431,7 +451,7 @@ export function loadTsxContents(files: string[], rootDir: string): Map<string, s
     }
 
     try {
-      const content = readFileSync(absolutePath, 'utf-8');
+      const content = readFileSync(absolutePath, "utf-8");
       contents.set(file, content);
     } catch {
       // Ignore file read failures
@@ -447,7 +467,7 @@ export function loadTsxContents(files: string[], rootDir: string): Map<string, s
 export function extractTsxFiles(diagnostics: Diagnostic[]): string[] {
   const files = new Set<string>();
   for (const d of diagnostics) {
-    if (d.file.endsWith('.svelte.tsx')) {
+    if (d.file.endsWith(".svelte.tsx")) {
       files.add(d.file);
     }
   }

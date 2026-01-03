@@ -4,36 +4,50 @@
  * Fast type checking using svelte2tsx + tsgo
  */
 
-// Public types
-export type {
-  FastCheckConfig,
-  CheckResult,
-  Diagnostic,
-  MappedDiagnostic,
-  ConversionResult,
-  SourceMapData,
-  SvelteWarning,
-} from './types';
-
+export {
+  collectAllSvelteWarnings,
+  collectChangedSvelteWarnings,
+} from "./compiler/collect";
+export {
+  formatDiagnostic,
+  printDiagnostics,
+  printRawDiagnostics,
+  printSummary,
+} from "./reporter";
 // Re-export runner as main API
-export { run as runFastCheck, type RunOptions as FastCheckOptions } from './runner';
-
+export {
+  type RunOptions as FastCheckOptions,
+  run as runFastCheck,
+} from "./runner";
 // Re-export utilities for advanced usage
 export {
+  buildSourcemapMap,
   convertAllSvelteFiles,
   convertChangedFiles,
-  buildSourcemapMap,
+  ensureCacheDir,
   generateTsconfig,
   getGeneratedTsconfigPath,
-  ensureCacheDir,
-} from './typecheck/convert';
+} from "./typecheck/convert";
 
-export { parseTscOutput, countDiagnostics } from './typecheck/parser';
+export {
+  extractTsxFiles,
+  filterFalsePositives,
+  loadTsxContents,
+} from "./typecheck/filter";
 
-export { filterFalsePositives, loadTsxContents, extractTsxFiles } from './typecheck/filter';
-
-export { mapDiagnostics, filterNegativeLines, tsxPathToOriginal } from './typecheck/mapper';
-
-export { formatDiagnostic, printDiagnostics, printSummary, printRawDiagnostics } from './reporter';
-
-export { collectAllSvelteWarnings, collectChangedSvelteWarnings } from './compiler/collect';
+export {
+  filterNegativeLines,
+  mapDiagnostics,
+  tsxPathToOriginal,
+} from "./typecheck/mapper";
+export { countDiagnostics, parseTscOutput } from "./typecheck/parser";
+// Public types
+export type {
+  CheckResult,
+  ConversionResult,
+  Diagnostic,
+  FastCheckConfig,
+  MappedDiagnostic,
+  SourceMapData,
+  SvelteWarning,
+} from "./types";

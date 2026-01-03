@@ -4,9 +4,12 @@
  * Pipeline: svelte.compile -> collect warnings
  */
 
-import { parentPort } from 'worker_threads';
-import type { FastCheckConfig, WorkerOutput } from '../types';
-import { collectAllSvelteWarnings, collectChangedSvelteWarnings } from './collect';
+import { parentPort } from "node:worker_threads";
+import type { FastCheckConfig, WorkerOutput } from "../types";
+import {
+  collectAllSvelteWarnings,
+  collectChangedSvelteWarnings,
+} from "./collect";
 
 /** Compiler worker input */
 export interface CompilerInput {
@@ -40,7 +43,7 @@ async function run(input: CompilerInput): Promise<CompilerOutput> {
 }
 
 // Worker message handler
-parentPort?.on('message', async (input: CompilerInput) => {
+parentPort?.on("message", async (input: CompilerInput) => {
   const result = await run(input);
   parentPort?.postMessage(result);
 });

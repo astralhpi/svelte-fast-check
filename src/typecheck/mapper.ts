@@ -5,16 +5,16 @@
  * to original .svelte file locations under src/.
  */
 
-import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping';
-import { resolve } from 'path';
-import type { Diagnostic, MappedDiagnostic, SourceMapData } from '../types';
+import { resolve } from "node:path";
+import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
+import type { Diagnostic, MappedDiagnostic, SourceMapData } from "../types";
 
 /** Default .fast-check folder path */
-const DEFAULT_CACHE_ROOT = '.fast-check';
-const TSX_DIR = 'tsx';
+const DEFAULT_CACHE_ROOT = ".fast-check";
+const TSX_DIR = "tsx";
 
 /** Store getter function pattern from svelte2tsx */
-const STORE_GET_PATTERN = '__sveltets_2_store_get(';
+const STORE_GET_PATTERN = "__sveltets_2_store_get(";
 
 /** TS error code for store errors */
 const TS_NO_OVERLOAD_MATCHES = 2769;
@@ -30,25 +30,25 @@ const TS_NO_OVERLOAD_MATCHES = 2769;
 export function tsxPathToOriginal(
   rootDir: string,
   tsxPath: string,
-  cacheDir: string = DEFAULT_CACHE_ROOT
+  cacheDir: string = DEFAULT_CACHE_ROOT,
 ): string {
-  const cachePrefix = resolve(rootDir, cacheDir, TSX_DIR) + '/';
+  const cachePrefix = `${resolve(rootDir, cacheDir, TSX_DIR)}/`;
 
   if (tsxPath.startsWith(cachePrefix)) {
     // Absolute path case
     const relativeTsx = tsxPath.slice(cachePrefix.length);
-    return relativeTsx.replace(/\.tsx$/, '');
+    return relativeTsx.replace(/\.tsx$/, "");
   }
 
   // Relative path case (tsc output)
   const prefix = `${cacheDir}/${TSX_DIR}/`;
   if (tsxPath.startsWith(prefix)) {
     const relativeTsx = tsxPath.slice(prefix.length);
-    return relativeTsx.replace(/\.tsx$/, '');
+    return relativeTsx.replace(/\.tsx$/, "");
   }
 
   // Cannot convert
-  return tsxPath.replace(/\.tsx$/, '');
+  return tsxPath.replace(/\.tsx$/, "");
 }
 
 /**
@@ -65,7 +65,7 @@ export function mapDiagnostics(
   sourcemaps: Map<string, SourceMapData>,
   rootDir: string,
   tsxContents?: Map<string, string>,
-  cacheDir: string = DEFAULT_CACHE_ROOT
+  cacheDir: string = DEFAULT_CACHE_ROOT,
 ): MappedDiagnostic[] {
   const mapped: MappedDiagnostic[] = [];
 
@@ -87,10 +87,10 @@ function mapDiagnostic(
   sourcemaps: Map<string, SourceMapData>,
   rootDir: string,
   tsxContents?: Map<string, string>,
-  cacheDir: string = DEFAULT_CACHE_ROOT
+  cacheDir: string = DEFAULT_CACHE_ROOT,
 ): MappedDiagnostic | null {
   // Only .svelte.tsx files need mapping
-  if (!d.file.endsWith('.svelte.tsx')) {
+  if (!d.file.endsWith(".svelte.tsx")) {
     // Regular .ts files are returned as-is
     return {
       ...d,
@@ -162,7 +162,9 @@ function mapDiagnostic(
 /**
  * Filter out negative line numbers (mapping failure cases)
  */
-export function filterNegativeLines(diagnostics: MappedDiagnostic[]): MappedDiagnostic[] {
+export function filterNegativeLines(
+  diagnostics: MappedDiagnostic[],
+): MappedDiagnostic[] {
   return diagnostics.filter((d) => d.originalLine > 0 && d.originalColumn > 0);
 }
 
@@ -175,9 +177,9 @@ export function filterNegativeLines(diagnostics: MappedDiagnostic[]): MappedDiag
 function findStoreUsageLocation(
   content: string,
   d: Diagnostic,
-  tracer: TraceMap
+  tracer: TraceMap,
 ): { line: number; column: number; storeName: string } | null {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   const errorLine = lines[d.line - 1];
   if (!errorLine) return null;
 
@@ -185,12 +187,14 @@ function findStoreUsageLocation(
   const storeGetIndex = errorLine.lastIndexOf(STORE_GET_PATTERN, d.column);
   if (storeGetIndex === -1) return null;
 
-  const afterPattern = errorLine.slice(storeGetIndex + STORE_GET_PATTERN.length);
+  const afterPattern = errorLine.slice(
+    storeGetIndex + STORE_GET_PATTERN.length,
+  );
   const storeNameMatch = afterPattern.match(/^(\w+)/);
   if (!storeNameMatch) return null;
 
   const storeName = storeNameMatch[1];
-  const $storeName = '$' + storeName;
+  const $storeName = `$${storeName}`;
 
   // Search for $storeName usage in lines after the declaration
   // Start from line after the error (store declaration is usually at top)
@@ -207,7 +211,7 @@ function findStoreUsageLocation(
 
     // Handle multi-line comment continuation
     if (inMultiLineComment) {
-      const endIdx = line.indexOf('*/');
+      const endIdx = line.indexOf("*/");
       if (endIdx === -1) continue; // Still in comment
       inMultiLineComment = false;
       searchLine = line.slice(endIdx + 2);
@@ -215,22 +219,24 @@ function findStoreUsageLocation(
     }
 
     // Skip single-line comments
-    const singleCommentIdx = searchLine.indexOf('//');
+    const singleCommentIdx = searchLine.indexOf("//");
     if (singleCommentIdx !== -1) {
       searchLine = searchLine.slice(0, singleCommentIdx);
     }
 
     // Handle multi-line comment start
-    const multiStartIdx = searchLine.indexOf('/*');
+    const multiStartIdx = searchLine.indexOf("/*");
     if (multiStartIdx !== -1) {
-      const multiEndIdx = searchLine.indexOf('*/', multiStartIdx);
+      const multiEndIdx = searchLine.indexOf("*/", multiStartIdx);
       if (multiEndIdx === -1) {
         // Comment continues to next line
         inMultiLineComment = true;
         searchLine = searchLine.slice(0, multiStartIdx);
       } else {
         // Comment ends on same line - remove it
-        searchLine = searchLine.slice(0, multiStartIdx) + searchLine.slice(multiEndIdx + 2);
+        searchLine =
+          searchLine.slice(0, multiStartIdx) +
+          searchLine.slice(multiEndIdx + 2);
       }
     }
 

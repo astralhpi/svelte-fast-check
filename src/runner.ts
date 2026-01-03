@@ -4,15 +4,19 @@
  * Runs typecheck and compiler workers in parallel
  */
 
-import { Worker } from 'worker_threads';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import { createRequire } from 'module';
-import type { FastCheckConfig, CheckResult } from './types';
-import type { TypeCheckInput, TypeCheckOutput } from './typecheck/worker';
-import type { CompilerInput, CompilerOutput } from './compiler/worker';
-import { countDiagnostics } from './typecheck/parser';
-import { printDiagnostics, printSummary, printRawDiagnostics } from './reporter';
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
+import type { CompilerInput, CompilerOutput } from "./compiler/worker";
+import {
+  printDiagnostics,
+  printRawDiagnostics,
+  printSummary,
+} from "./reporter";
+import { countDiagnostics } from "./typecheck/parser";
+import type { TypeCheckInput, TypeCheckOutput } from "./typecheck/worker";
+import type { CheckResult, FastCheckConfig } from "./types";
 
 const require = createRequire(import.meta.url);
 
@@ -33,7 +37,7 @@ export interface RunOptions {
 /**
  * Get worker file path (supports both dev and built environments)
  */
-function getWorkerPath(pipeline: 'typecheck' | 'compiler'): string {
+function getWorkerPath(pipeline: "typecheck" | "compiler"): string {
   // In development: src/typecheck/worker.ts
   // After build: dist/typecheck/worker.js
   const jsPath = resolve(__dirname, `${pipeline}/worker.js`);
@@ -51,21 +55,24 @@ function getWorkerPath(pipeline: 'typecheck' | 'compiler'): string {
 /**
  * Run a worker and return its result
  */
-function runWorker<TInput, TOutput>(workerPath: string, input: TInput): Promise<TOutput> {
+function runWorker<TInput, TOutput>(
+  workerPath: string,
+  input: TInput,
+): Promise<TOutput> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(workerPath);
 
-    worker.on('message', (result: TOutput) => {
+    worker.on("message", (result: TOutput) => {
       worker.terminate();
       resolve(result);
     });
 
-    worker.on('error', (error) => {
+    worker.on("error", (error) => {
       worker.terminate();
       reject(error);
     });
 
-    worker.on('exit', (code) => {
+    worker.on("exit", (code) => {
       if (code !== 0) {
         reject(new Error(`Worker stopped with exit code ${code}`));
       }
@@ -78,17 +85,25 @@ function runWorker<TInput, TOutput>(workerPath: string, input: TInput): Promise<
 /**
  * Run svelte-fast-check
  */
-export async function run(config: FastCheckConfig, options: RunOptions = {}): Promise<CheckResult> {
-  const { incremental = false, raw = false, quiet = false, svelteWarnings = true } = options;
+export async function run(
+  config: FastCheckConfig,
+  options: RunOptions = {},
+): Promise<CheckResult> {
+  const {
+    incremental = false,
+    raw = false,
+    quiet = false,
+    svelteWarnings = true,
+  } = options;
   const startTime = performance.now();
 
   const log = quiet ? () => {} : console.log.bind(console);
 
-  log('🔍 svelte-fast-check: Starting type check...\n');
+  log("🔍 svelte-fast-check: Starting type check...\n");
 
   // Resolve worker paths
-  const typeCheckWorkerPath = getWorkerPath('typecheck');
-  const compilerWorkerPath = getWorkerPath('compiler');
+  const typeCheckWorkerPath = getWorkerPath("typecheck");
+  const compilerWorkerPath = getWorkerPath("compiler");
 
   // Prepare worker inputs
   const typeCheckInput: TypeCheckInput = { config, incremental, raw };
@@ -99,9 +114,15 @@ export async function run(config: FastCheckConfig, options: RunOptions = {}): Pr
   const runCompilerWorker = svelteWarnings && !raw;
 
   const [typeCheckResult, compilerResult] = await Promise.all([
-    runWorker<TypeCheckInput, TypeCheckOutput>(typeCheckWorkerPath, typeCheckInput),
+    runWorker<TypeCheckInput, TypeCheckOutput>(
+      typeCheckWorkerPath,
+      typeCheckInput,
+    ),
     runCompilerWorker
-      ? runWorker<CompilerInput, CompilerOutput>(compilerWorkerPath, compilerInput)
+      ? runWorker<CompilerInput, CompilerOutput>(
+          compilerWorkerPath,
+          compilerInput,
+        )
       : null,
   ]);
 
@@ -121,20 +142,20 @@ export async function run(config: FastCheckConfig, options: RunOptions = {}): Pr
     const { errorCount, warningCount } = countDiagnostics(diagnostics);
 
     if (!quiet && diagnostics.length > 0) {
-      log('📋 Diagnostics (raw):\n');
+      log("📋 Diagnostics (raw):\n");
       printRawDiagnostics(diagnostics);
       log();
     }
 
     if (!quiet) {
-      log('─'.repeat(60));
+      log("─".repeat(60));
       if (errorCount === 0 && warningCount === 0) {
-        log('✅ No problems found');
+        log("✅ No problems found");
       } else {
         const parts: string[] = [];
         if (errorCount > 0) parts.push(`${errorCount} error(s)`);
         if (warningCount > 0) parts.push(`${warningCount} warning(s)`);
-        log(`❌ Found ${parts.join(' and ')}`);
+        log(`❌ Found ${parts.join(" and ")}`);
       }
       log(`⏱️  Total time: ${totalTime}ms`);
     }
@@ -164,13 +185,13 @@ export async function run(config: FastCheckConfig, options: RunOptions = {}): Pr
 
   if (!quiet) {
     if (allDiagnostics.length > 0) {
-      log('📋 Diagnostics:\n');
+      log("📋 Diagnostics:\n");
       printDiagnostics(allDiagnostics, config.rootDir);
     }
 
     printSummary(result);
     log(
-      `   (typeCheck: ${typeCheckResult.duration}ms, svelteWarnings: ${compilerResult?.duration ?? 0}ms)`
+      `   (typeCheck: ${typeCheckResult.duration}ms, svelteWarnings: ${compilerResult?.duration ?? 0}ms)`,
     );
   }
 

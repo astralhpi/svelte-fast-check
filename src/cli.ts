@@ -9,25 +9,25 @@
  *   svelte-fast-check --config ./svelte-fast-check.config.ts  # specify config file
  */
 
-import { resolve } from 'path';
-import { existsSync } from 'fs';
-import { runFastCheck } from './index';
-import type { FastCheckConfig } from './types';
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { runFastCheck } from "./index";
+import type { FastCheckConfig } from "./types";
 
 async function main() {
   const args = process.argv.slice(2);
 
   // --incremental: enable incremental mode
   // without flag, defaults to non-incremental (clean mode)
-  const incremental = args.includes('--incremental') || args.includes('-i');
+  const incremental = args.includes("--incremental") || args.includes("-i");
 
-  const rawMode = args.includes('--raw') || args.includes('-r');
+  const rawMode = args.includes("--raw") || args.includes("-r");
 
   // --no-svelte-warnings: disable svelte compiler warnings
-  const svelteWarnings = !args.includes('--no-svelte-warnings');
+  const svelteWarnings = !args.includes("--no-svelte-warnings");
 
   // find config file
-  const configIndex = args.findIndex((a) => a === '--config' || a === '-c');
+  const configIndex = args.findIndex((a) => a === "--config" || a === "-c");
   let configPath: string | undefined;
   const configArg = configIndex !== -1 ? args[configIndex + 1] : undefined;
   if (configArg) {
@@ -37,7 +37,7 @@ async function main() {
   // default config (SvelteKit project)
   let config: FastCheckConfig = {
     rootDir: process.cwd(),
-    srcDir: resolve(process.cwd(), 'src'),
+    srcDir: resolve(process.cwd(), "src"),
     // paths are automatically read from tsconfig.json
   };
 
@@ -53,7 +53,10 @@ async function main() {
   }
 
   // auto-detect svelte-fast-check.config.ts
-  const defaultConfigPath = resolve(process.cwd(), 'svelte-fast-check.config.ts');
+  const defaultConfigPath = resolve(
+    process.cwd(),
+    "svelte-fast-check.config.ts",
+  );
   if (!configPath && existsSync(defaultConfigPath)) {
     try {
       const loaded = await import(defaultConfigPath);
@@ -63,7 +66,11 @@ async function main() {
     }
   }
 
-  const result = await runFastCheck(config, { incremental, raw: rawMode, svelteWarnings });
+  const result = await runFastCheck(config, {
+    incremental,
+    raw: rawMode,
+    svelteWarnings,
+  });
 
   // exit with code 1 if there are errors
   if (result.errorCount > 0) {
@@ -72,6 +79,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err);
+  console.error("Fatal error:", err);
   process.exit(1);
 });

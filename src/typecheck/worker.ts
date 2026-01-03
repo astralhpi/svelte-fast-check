@@ -4,19 +4,23 @@
  * Pipeline: svelte2tsx -> tsgo -> filter -> map
  */
 
-import { parentPort } from 'worker_threads';
-import { spawnSync } from 'child_process';
-import { createRequire } from 'module';
-import type { FastCheckConfig, WorkerOutput } from '../types';
+import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { parentPort } from "node:worker_threads";
+import type { FastCheckConfig, WorkerOutput } from "../types";
 import {
+  buildSourcemapMap,
   convertAllSvelteFiles,
   convertChangedFiles,
-  buildSourcemapMap,
   generateTsconfig,
-} from './convert';
-import { parseTscOutput } from './parser';
-import { filterFalsePositives, loadTsxContents, extractTsxFiles } from './filter';
-import { mapDiagnostics, filterNegativeLines } from './mapper';
+} from "./convert";
+import {
+  extractTsxFiles,
+  filterFalsePositives,
+  loadTsxContents,
+} from "./filter";
+import { filterNegativeLines, mapDiagnostics } from "./mapper";
+import { parseTscOutput } from "./parser";
 
 const require = createRequire(import.meta.url);
 
@@ -32,11 +36,13 @@ export type TypeCheckOutput = WorkerOutput;
 
 function getTsgoPath(): string {
   try {
-    const nativePreviewPath = require.resolve('@typescript/native-preview/package.json');
-    const packageDir = nativePreviewPath.replace('/package.json', '');
+    const nativePreviewPath = require.resolve(
+      "@typescript/native-preview/package.json",
+    );
+    const packageDir = nativePreviewPath.replace("/package.json", "");
     return `${packageDir}/bin/tsgo.js`;
   } catch {
-    return 'tsgo';
+    return "tsgo";
   }
 }
 
@@ -53,19 +59,23 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
     // Step 2: Generate tsconfig & run tsgo
     const tsconfigPath = await generateTsconfig(config, { incremental });
     const tsgoPath = getTsgoPath();
-    const tscResult = spawnSync('node', [tsgoPath, '--noEmit', '-p', tsconfigPath], {
-      cwd: config.rootDir,
-      encoding: 'utf-8',
-    });
+    const tscResult = spawnSync(
+      "node",
+      [tsgoPath, "--noEmit", "-p", tsconfigPath],
+      {
+        cwd: config.rootDir,
+        encoding: "utf-8",
+      },
+    );
 
     if (tscResult.error) {
       throw new Error(`tsgo execution failed: ${tscResult.error.message}`);
     }
 
     // Step 3: Parse results
-    const output = (tscResult.stdout ?? '') + (tscResult.stderr ?? '');
+    const output = (tscResult.stdout ?? "") + (tscResult.stderr ?? "");
     let diagnostics = parseTscOutput(output);
-    diagnostics = diagnostics.map((d) => ({ ...d, source: 'ts' as const }));
+    diagnostics = diagnostics.map((d) => ({ ...d, source: "ts" as const }));
 
     // Raw mode: skip filter/map, return tsgo output as-is
     if (raw) {
@@ -87,8 +97,14 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
 
     // Step 5: Sourcemap mapping
     const sourcemaps = buildSourcemapMap(results);
-    const cacheDir = config.cacheDir || '.fast-check';
-    let mapped = mapDiagnostics(diagnostics, sourcemaps, config.rootDir, tsxContents, cacheDir);
+    const cacheDir = config.cacheDir || ".fast-check";
+    let mapped = mapDiagnostics(
+      diagnostics,
+      sourcemaps,
+      config.rootDir,
+      tsxContents,
+      cacheDir,
+    );
     mapped = filterNegativeLines(mapped);
 
     return {
@@ -105,7 +121,7 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
 }
 
 // Worker message handler
-parentPort?.on('message', async (input: TypeCheckInput) => {
+parentPort?.on("message", async (input: TypeCheckInput) => {
   const result = await run(input);
   parentPort?.postMessage(result);
 });

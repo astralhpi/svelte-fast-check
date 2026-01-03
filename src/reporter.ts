@@ -2,18 +2,18 @@
  * Error output formatting module
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import type { Diagnostic, MappedDiagnostic, CheckResult } from './types';
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { CheckResult, Diagnostic, MappedDiagnostic } from "./types";
 
 // ANSI color codes
 const colors = {
-  reset: '\x1b[0m',
-  red: '\x1b[31m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
-  gray: '\x1b[90m',
-  bold: '\x1b[1m',
+  reset: "\x1b[0m",
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  gray: "\x1b[90m",
+  bold: "\x1b[1m",
 };
 
 // Source file cache
@@ -33,8 +33,8 @@ function getSourceLines(filePath: string, rootDir: string): string[] | null {
   }
 
   try {
-    const content = readFileSync(absolutePath, 'utf-8');
-    const lines = content.split('\n');
+    const content = readFileSync(absolutePath, "utf-8");
+    const lines = content.split("\n");
     sourceCache.set(filePath, lines);
     return lines;
   } catch {
@@ -49,7 +49,7 @@ function getCodeSnippet(
   filePath: string,
   line: number,
   column: number,
-  rootDir: string
+  rootDir: string,
 ): string | null {
   const lines = getSourceLines(filePath, rootDir);
   if (!lines) return null;
@@ -69,10 +69,10 @@ function getCodeSnippet(
   result.push(`${colors.red}> ${errorLine}${colors.reset}`);
 
   // Error position caret
-  const caretPadding = ' '.repeat(column + 1); // +2 for "> ", -1 for 1-based
+  const caretPadding = " ".repeat(column + 1); // +2 for "> ", -1 for 1-based
   result.push(`${colors.red}${caretPadding}^${colors.reset}`);
 
-  return result.join('\n');
+  return result.join("\n");
 }
 
 /**
@@ -91,20 +91,25 @@ function getCodeSnippet(
 export function formatDiagnostic(d: MappedDiagnostic, rootDir: string): string {
   const location = `${colors.cyan}${d.originalFile}:${d.originalLine}:${d.originalColumn}${colors.reset}`;
   const severity =
-    d.severity === 'error'
+    d.severity === "error"
       ? `${colors.red}${colors.bold}Error${colors.reset}`
       : `${colors.yellow}Warning${colors.reset}`;
 
   // Format code based on source
   const code =
-    d.source === 'svelte'
+    d.source === "svelte"
       ? `${colors.gray}(svelte)${colors.reset}`
       : `${colors.gray}(ts${d.code})${colors.reset}`;
 
   const header = `${location}\n${severity}: ${d.message} ${code}`;
 
   // Add code snippet
-  const snippet = getCodeSnippet(d.originalFile, d.originalLine, d.originalColumn, rootDir);
+  const snippet = getCodeSnippet(
+    d.originalFile,
+    d.originalLine,
+    d.originalColumn,
+    rootDir,
+  );
   if (snippet) {
     return `${header}\n${snippet}`;
   }
@@ -115,7 +120,10 @@ export function formatDiagnostic(d: MappedDiagnostic, rootDir: string): string {
 /**
  * Print all diagnostics
  */
-export function printDiagnostics(diagnostics: MappedDiagnostic[], rootDir: string): void {
+export function printDiagnostics(
+  diagnostics: MappedDiagnostic[],
+  rootDir: string,
+): void {
   // Group by file
   const byFile = new Map<string, MappedDiagnostic[]>();
   for (const d of diagnostics) {
@@ -123,7 +131,7 @@ export function printDiagnostics(diagnostics: MappedDiagnostic[], rootDir: strin
     if (!byFile.has(file)) {
       byFile.set(file, []);
     }
-    byFile.get(file)!.push(d);
+    byFile.get(file)?.push(d);
   }
 
   // Print by file
@@ -144,7 +152,7 @@ export function printDiagnostics(diagnostics: MappedDiagnostic[], rootDir: strin
 export function printSummary(result: CheckResult): void {
   const { errorCount, warningCount, duration } = result;
 
-  console.log('─'.repeat(60));
+  console.log("─".repeat(60));
 
   if (errorCount === 0 && warningCount === 0) {
     console.log(`${colors.cyan}✓${colors.reset} No problems found`);
@@ -156,7 +164,7 @@ export function printSummary(result: CheckResult): void {
     if (warningCount > 0) {
       parts.push(`${colors.yellow}${warningCount} warning(s)${colors.reset}`);
     }
-    console.log(`Found ${parts.join(' and ')}`);
+    console.log(`Found ${parts.join(" and ")}`);
   }
 
   console.log(`${colors.gray}Completed in ${duration}ms${colors.reset}`);
@@ -167,7 +175,9 @@ export function printSummary(result: CheckResult): void {
  */
 export function printRawDiagnostics(diagnostics: Diagnostic[]): void {
   for (const d of diagnostics) {
-    const severity = d.severity === 'error' ? 'Error' : 'Warning';
-    console.log(`${d.file}(${d.line},${d.column}): ${severity} TS${d.code}: ${d.message}`);
+    const severity = d.severity === "error" ? "Error" : "Warning";
+    console.log(
+      `${d.file}(${d.line},${d.column}): ${severity} TS${d.code}: ${d.message}`,
+    );
   }
 }

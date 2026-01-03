@@ -1,31 +1,31 @@
-import { defineConfig } from 'tsup';
+import { defineConfig } from "tsup";
 
 export default defineConfig([
   // Library
   {
-    entry: ['src/index.ts'],
-    format: ['esm'],
+    entry: ["src/index.ts"],
+    format: ["esm"],
     dts: true,
     clean: true,
   },
   // CLI
   {
-    entry: ['src/cli.ts'],
-    format: ['esm'],
+    entry: ["src/cli.ts"],
+    format: ["esm"],
     banner: {
-      js: '#!/usr/bin/env node',
+      js: "#!/usr/bin/env node",
     },
   },
   // TypeCheck Worker
   {
-    entry: ['src/typecheck/worker.ts'],
-    format: ['esm'],
-    outDir: 'dist/typecheck',
+    entry: ["src/typecheck/worker.ts"],
+    format: ["esm"],
+    outDir: "dist/typecheck",
   },
   // Compiler Worker
   {
-    entry: ['src/compiler/worker.ts'],
-    format: ['esm'],
-    outDir: 'dist/compiler',
+    entry: ["src/compiler/worker.ts"],
+    format: ["esm"],
+    outDir: "dist/compiler",
   },
 ]);

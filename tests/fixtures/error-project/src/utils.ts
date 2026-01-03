@@ -1,5 +1,5 @@
 // Type error: return type mismatch
-export function add(a: number, b: number): number {
+export function add(_a: number, _b: number): number {
   return "not a number";
 }
 

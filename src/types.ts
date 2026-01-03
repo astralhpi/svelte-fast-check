@@ -11,7 +11,9 @@ export interface Svelte2TsxSourceMap {
 }
 
 /** Map type used in ConversionResult */
-export type SourceMapData = Svelte2TsxSourceMap | { mappings: string; sources: never[] };
+export type SourceMapData =
+  | Svelte2TsxSourceMap
+  | { mappings: string; sources: never[] };
 
 /** svelte2tsx conversion result */
 export interface ConversionResult {
@@ -40,9 +42,9 @@ export interface Diagnostic {
   /** Error message */
   message: string;
   /** Severity */
-  severity: 'error' | 'warning';
+  severity: "error" | "warning";
   /** Source of the diagnostic */
-  source?: 'ts' | 'svelte';
+  source?: "ts" | "svelte";
 }
 
 /** Mapped diagnostic (original .svelte location) */

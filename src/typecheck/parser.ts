@@ -4,7 +4,7 @@
  * Parses tsc stdout into a Diagnostic array.
  */
 
-import type { Diagnostic } from '../types';
+import type { Diagnostic } from "../types";
 
 /**
  * Parse tsc output
@@ -15,7 +15,7 @@ import type { Diagnostic } from '../types';
  */
 export function parseTscOutput(output: string): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const lines = output.split('\n');
+  const lines = output.split("\n");
 
   // tsc error pattern: file(line,col): error TScode: message
   const pattern = /^(.+?)\((\d+),(\d+)\):\s*(error|warning)\s+TS(\d+):\s*(.+)$/;
@@ -37,7 +37,7 @@ export function parseTscOutput(output: string): Diagnostic[] {
           column: parseInt(colStr, 10),
           code: parseInt(codeStr, 10),
           message: message.trim(),
-          severity: severity as 'error' | 'warning',
+          severity: severity as "error" | "warning",
         });
       }
     }
@@ -57,7 +57,7 @@ export function countDiagnostics(diagnostics: Diagnostic[]): {
   let warningCount = 0;
 
   for (const d of diagnostics) {
-    if (d.severity === 'error') {
+    if (d.severity === "error") {
       errorCount++;
     } else {
       warningCount++;

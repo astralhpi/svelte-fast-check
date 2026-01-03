@@ -6,22 +6,32 @@
  * Uses Promise.all + async IO for parallel conversion.
  */
 
-import { svelte2tsx } from 'svelte2tsx';
-import { statSync, mkdirSync, existsSync, unlinkSync, readFileSync } from 'fs';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { globSync } from 'glob';
-import { resolve, dirname, relative, basename } from 'path';
-import { createRequire } from 'module';
-import type { ConversionResult, FastCheckConfig, SourceMapData } from '../types';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { basename, dirname, relative, resolve } from "node:path";
+import { globSync } from "glob";
+import { svelte2tsx } from "svelte2tsx";
+import type {
+  ConversionResult,
+  FastCheckConfig,
+  SourceMapData,
+} from "../types";
 
 // Get svelte2tsx package path (from svelte-fast-check's own dependencies)
 const require = createRequire(import.meta.url);
-const svelte2tsxPath = dirname(require.resolve('svelte2tsx/package.json'));
+const svelte2tsxPath = dirname(require.resolve("svelte2tsx/package.json"));
 
 /** .fast-check folder path (relative to project root) */
-const DEFAULT_CACHE_ROOT = '.fast-check';
-const TSX_DIR = 'tsx';
-const MAPS_DIR = 'maps';
+const DEFAULT_CACHE_ROOT = ".fast-check";
+const TSX_DIR = "tsx";
+const MAPS_DIR = "maps";
 
 function getCacheRoot(config: FastCheckConfig): string {
   return config.cacheDir || DEFAULT_CACHE_ROOT;
@@ -29,7 +39,7 @@ function getCacheRoot(config: FastCheckConfig): string {
 
 /** Dynamic tsconfig path */
 export const getGeneratedTsconfigPath = (config: FastCheckConfig): string =>
-  resolve(config.rootDir, getCacheRoot(config), 'tsconfig.json');
+  resolve(config.rootDir, getCacheRoot(config), "tsconfig.json");
 
 /**
  * Convert source path to cache path
@@ -37,7 +47,12 @@ export const getGeneratedTsconfigPath = (config: FastCheckConfig): string =>
  */
 function getTsxPath(config: FastCheckConfig, sourcePath: string): string {
   const relativePath = relative(config.rootDir, sourcePath);
-  return resolve(config.rootDir, getCacheRoot(config), TSX_DIR, relativePath + '.tsx');
+  return resolve(
+    config.rootDir,
+    getCacheRoot(config),
+    TSX_DIR,
+    `${relativePath}.tsx`,
+  );
 }
 
 /**
@@ -46,8 +61,13 @@ function getTsxPath(config: FastCheckConfig, sourcePath: string): string {
  */
 function getMapPath(config: FastCheckConfig, sourcePath: string): string {
   const relativePath = relative(config.rootDir, sourcePath);
-  const safeName = relativePath.replace(/[/\\]/g, '_');
-  return resolve(config.rootDir, getCacheRoot(config), MAPS_DIR, safeName + '.map.json');
+  const safeName = relativePath.replace(/[/\\]/g, "_");
+  return resolve(
+    config.rootDir,
+    getCacheRoot(config),
+    MAPS_DIR,
+    `${safeName}.map.json`,
+  );
 }
 
 /**
@@ -69,7 +89,9 @@ export function ensureCacheDir(config: FastCheckConfig): void {
 /**
  * Find all .svelte files and convert to .svelte.tsx (parallel with Promise.all)
  */
-export async function convertAllSvelteFiles(config: FastCheckConfig): Promise<ConversionResult[]> {
+export async function convertAllSvelteFiles(
+  config: FastCheckConfig,
+): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
   const files = findSvelteFiles(config);
@@ -80,7 +102,7 @@ export async function convertAllSvelteFiles(config: FastCheckConfig): Promise<Co
     files.map((file) => {
       const sourcePath = resolve(config.rootDir, file);
       return convertSvelteFileAsync(config, sourcePath);
-    })
+    }),
   );
 
   const successCount = results.filter((r) => r.success).length;
@@ -99,19 +121,20 @@ export async function convertAllSvelteFiles(config: FastCheckConfig): Promise<Co
  */
 async function convertSvelteFileAsync(
   config: FastCheckConfig,
-  sourcePath: string
+  sourcePath: string,
 ): Promise<ConversionResult> {
   const outputPath = getTsxPath(config, sourcePath);
   const mapPath = getMapPath(config, sourcePath);
 
   try {
-    const content = await readFile(sourcePath, 'utf-8');
-    const hasTs = content.includes('lang="ts"') || content.includes("lang='ts'");
+    const content = await readFile(sourcePath, "utf-8");
+    const hasTs =
+      content.includes('lang="ts"') || content.includes("lang='ts'");
 
     const result = svelte2tsx(content, {
       filename: sourcePath,
       isTsFile: hasTs,
-      mode: 'ts',
+      mode: "ts",
     });
 
     // Create output directory (ignore EEXIST for race condition with Promise.all)
@@ -136,7 +159,7 @@ async function convertSvelteFileAsync(
     return {
       sourcePath,
       outputPath,
-      map: { mappings: '', sources: [] as never[] },
+      map: { mappings: "", sources: [] as never[] },
       success: false,
       error,
     };
@@ -152,7 +175,7 @@ async function loadSourcemap(mapPath: string): Promise<SourceMapData | null> {
   }
 
   try {
-    const content = await readFile(mapPath, 'utf-8');
+    const content = await readFile(mapPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return null;
@@ -162,7 +185,9 @@ async function loadSourcemap(mapPath: string): Promise<SourceMapData | null> {
 /**
  * Convert only changed files (mtime-based, parallel) + delete orphan tsx files
  */
-export async function convertChangedFiles(config: FastCheckConfig): Promise<ConversionResult[]> {
+export async function convertChangedFiles(
+  config: FastCheckConfig,
+): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
   const files = findSvelteFiles(config);
@@ -204,15 +229,15 @@ export async function convertChangedFiles(config: FastCheckConfig): Promise<Conv
       return {
         sourcePath,
         outputPath,
-        map: map || { mappings: '', sources: [] as never[] },
+        map: map || { mappings: "", sources: [] as never[] },
         success: !!map,
       };
-    })
+    }),
   );
 
   // Convert only changed files in parallel with Promise.all
   const convertedResults = await Promise.all(
-    toConvert.map((sourcePath) => convertSvelteFileAsync(config, sourcePath))
+    toConvert.map((sourcePath) => convertSvelteFileAsync(config, sourcePath)),
   );
 
   const results = [...skippedResults, ...convertedResults];
@@ -234,12 +259,15 @@ export async function convertChangedFiles(config: FastCheckConfig): Promise<Conv
 /**
  * Delete orphan tsx files whose source has been deleted
  */
-function cleanOrphanTsxFiles(config: FastCheckConfig, validTsxPaths: Set<string>): number {
+function cleanOrphanTsxFiles(
+  config: FastCheckConfig,
+  validTsxPaths: Set<string>,
+): number {
   const cacheRoot = getCacheRoot(config);
   const tsxDir = resolve(config.rootDir, cacheRoot, TSX_DIR);
   if (!existsSync(tsxDir)) return 0;
 
-  const existingTsxFiles = globSync('**/*.svelte.tsx', { cwd: tsxDir });
+  const existingTsxFiles = globSync("**/*.svelte.tsx", { cwd: tsxDir });
   let deleted = 0;
 
   for (const file of existingTsxFiles) {
@@ -250,9 +278,14 @@ function cleanOrphanTsxFiles(config: FastCheckConfig, validTsxPaths: Set<string>
         unlinkSync(tsxPath);
 
         // Also delete corresponding sourcemap
-        const relativePath = file.replace(/\.tsx$/, '');
-        const safeName = relativePath.replace(/[/\\]/g, '_');
-        const mapPath = resolve(config.rootDir, cacheRoot, MAPS_DIR, safeName + '.map.json');
+        const relativePath = file.replace(/\.tsx$/, "");
+        const safeName = relativePath.replace(/[/\\]/g, "_");
+        const mapPath = resolve(
+          config.rootDir,
+          cacheRoot,
+          MAPS_DIR,
+          `${safeName}.map.json`,
+        );
         if (existsSync(mapPath)) {
           unlinkSync(mapPath);
         }
@@ -270,7 +303,9 @@ function cleanOrphanTsxFiles(config: FastCheckConfig, validTsxPaths: Set<string>
 /**
  * Return all sourcemaps as a Map
  */
-export function buildSourcemapMap(results: ConversionResult[]): Map<string, SourceMapData> {
+export function buildSourcemapMap(
+  results: ConversionResult[],
+): Map<string, SourceMapData> {
   const maps = new Map<string, SourceMapData>();
 
   for (const result of results) {
@@ -300,7 +335,7 @@ export interface GenerateTsconfigOptions {
  */
 export async function generateTsconfig(
   config: FastCheckConfig,
-  options: GenerateTsconfigOptions = {}
+  options: GenerateTsconfigOptions = {},
 ): Promise<string> {
   const { incremental = false } = options;
   const tsconfigPath = getGeneratedTsconfigPath(config);
@@ -309,14 +344,15 @@ export async function generateTsconfig(
   const projectTsconfig = readTypesFromTsconfig(config.rootDir);
 
   // Check if this is a SvelteKit project
-  const isSvelteKit = existsSync(resolve(config.rootDir, '.svelte-kit'));
+  const isSvelteKit = existsSync(resolve(config.rootDir, ".svelte-kit"));
 
   // Read paths from tsconfig.json, use SvelteKit defaults if not present
-  const tsconfigPaths = (projectTsconfig?.compilerOptions?.paths as Record<string, string[]>) || {};
+  const tsconfigPaths =
+    (projectTsconfig?.compilerOptions?.paths as Record<string, string[]>) || {};
   const defaultPaths: Record<string, string[]> = isSvelteKit
     ? {
-        $lib: ['./../src/lib'],
-        '$lib/*': ['./../src/lib/*'],
+        $lib: ["./../src/lib"],
+        "$lib/*": ["./../src/lib/*"],
       }
     : {};
   // Priority: config.paths > tsconfig paths > defaults
@@ -336,58 +372,63 @@ export async function generateTsconfig(
       // Settings forced by fast-check (overrides)
       noEmit: true,
       skipLibCheck: true,
-      jsx: 'preserve',
-      jsxImportSource: 'svelte',
+      jsx: "preserve",
+      jsxImportSource: "svelte",
 
       // Incremental build settings
       incremental,
-      tsBuildInfoFile: incremental ? './.tsbuildinfo' : undefined,
+      tsBuildInfoFile: incremental ? "./.tsbuildinfo" : undefined,
 
       // rootDirs: merge tsx folder with project root
       rootDirs: isSvelteKit
-        ? ['..', '../.svelte-kit/types', './tsx']
-        : ['..', './tsx'],
+        ? ["..", "../.svelte-kit/types", "./tsx"]
+        : ["..", "./tsx"],
 
       // paths need to be converted to relative paths
       paths,
 
       // Use defaults if lib is not specified
-      lib: projectTsconfig?.compilerOptions?.lib || ['esnext', 'DOM', 'DOM.Iterable'],
+      lib: projectTsconfig?.compilerOptions?.lib || [
+        "esnext",
+        "DOM",
+        "DOM.Iterable",
+      ],
 
       // Use project's types if specified, otherwise use config.types
       // This ensures @types/* packages are properly loaded
       types:
-        config.types ?? (projectTsconfig?.compilerOptions?.types as string[] | undefined),
+        config.types ??
+        (projectTsconfig?.compilerOptions?.types as string[] | undefined),
     },
 
     // svelte2tsx shims + app.d.ts for DOM type overrides
     // Use absolute paths to svelte2tsx from svelte-fast-check's dependencies
     files: [
       // SvelteKit app.d.ts for global type declarations
-      ...(isSvelteKit ? ['../src/app.d.ts'] : []),
-      resolve(svelte2tsxPath, 'svelte-shims-v4.d.ts'),
-      resolve(svelte2tsxPath, 'svelte-jsx-v4.d.ts'),
+      ...(isSvelteKit ? ["../src/app.d.ts"] : []),
+      resolve(svelte2tsxPath, "svelte-shims-v4.d.ts"),
+      resolve(svelte2tsxPath, "svelte-jsx-v4.d.ts"),
     ],
 
     include: [
       // SvelteKit generated types
       ...(isSvelteKit
         ? [
-            '../.svelte-kit/ambient.d.ts',
-            '../.svelte-kit/non-ambient.d.ts',
-            '../.svelte-kit/types/**/$types.d.ts',
+            "../.svelte-kit/ambient.d.ts",
+            "../.svelte-kit/non-ambient.d.ts",
+            "../.svelte-kit/types/**/$types.d.ts",
           ]
         : []),
-      '../src/**/*.ts',
-      '../src/**/*.d.ts',
-      './tsx/**/*.svelte.tsx',
+      "../src/**/*.ts",
+      "../src/**/*.d.ts",
+      "./tsx/**/*.svelte.tsx",
       ...(config.include || []),
     ],
 
     exclude: [
-      '../src/**/*.spec.ts',
-      '../src/**/*.test.ts',
-      '../node_modules/**',
+      "../src/**/*.spec.ts",
+      "../src/**/*.test.ts",
+      "../node_modules/**",
       // Include excludes from tsconfig.json
       ...(projectTsconfig?.exclude || []).map((p: string) => `../${p}`),
       ...(config.exclude || []),
@@ -413,7 +454,7 @@ interface ParsedTsconfig {
 function resolvePatterns(
   patterns: string[] | undefined,
   patternBaseDir: string,
-  rootDir: string
+  rootDir: string,
 ): string[] | undefined {
   if (!patterns) return undefined;
 
@@ -431,15 +472,15 @@ function resolvePatterns(
  */
 function readTypesFromTsconfig(
   rootDir: string,
-  tsconfigFileName: string = 'tsconfig.json',
-  tsconfigDir?: string
+  tsconfigFileName: string = "tsconfig.json",
+  tsconfigDir?: string,
 ): ParsedTsconfig | null {
   const baseDir = tsconfigDir || rootDir;
   const tsconfigPath = resolve(baseDir, tsconfigFileName);
   if (!existsSync(tsconfigPath)) return null;
 
   try {
-    const content = readFileSync(tsconfigPath, 'utf-8');
+    const content = readFileSync(tsconfigPath, "utf-8");
     const tsconfig = JSON.parse(content);
     const currentDir = dirname(tsconfigPath);
 
@@ -449,11 +490,23 @@ function readTypesFromTsconfig(
       const parentDir = dirname(extendsPath);
       const parentFileName = basename(extendsPath);
 
-      const parentTsconfig = readTypesFromTsconfig(rootDir, parentFileName, parentDir);
+      const parentTsconfig = readTypesFromTsconfig(
+        rootDir,
+        parentFileName,
+        parentDir,
+      );
       if (parentTsconfig) {
         // Resolve current tsconfig's patterns relative to rootDir
-        const resolvedInclude = resolvePatterns(tsconfig.include, currentDir, rootDir);
-        const resolvedExclude = resolvePatterns(tsconfig.exclude, currentDir, rootDir);
+        const resolvedInclude = resolvePatterns(
+          tsconfig.include,
+          currentDir,
+          rootDir,
+        );
+        const resolvedExclude = resolvePatterns(
+          tsconfig.exclude,
+          currentDir,
+          rootDir,
+        );
 
         return {
           compilerOptions: {
@@ -488,9 +541,11 @@ export function findSvelteFiles(config: FastCheckConfig): string[] {
   // Extract *.svelte patterns from tsconfig, or use default
   // Use regex to match patterns ending with .svelte (e.g., **/*.svelte)
   // This avoids matching .svelte-kit paths
-  let patterns = ['src/**/*.svelte'];
+  let patterns = ["src/**/*.svelte"];
   if (tsconfig?.include) {
-    const sveltePatterns = tsconfig.include.filter((pattern) => /\.svelte$/.test(pattern));
+    const sveltePatterns = tsconfig.include.filter((pattern) =>
+      /\.svelte$/.test(pattern),
+    );
     if (sveltePatterns.length > 0) {
       patterns = sveltePatterns;
     }
@@ -501,7 +556,7 @@ export function findSvelteFiles(config: FastCheckConfig): string[] {
   // Use single globSync call with pattern array for better performance
   const files = globSync(patterns, {
     cwd: config.rootDir,
-    ignore: [...exclude, '**/node_modules/**'],
+    ignore: [...exclude, "**/node_modules/**"],
   });
 
   return [...new Set(files)];
