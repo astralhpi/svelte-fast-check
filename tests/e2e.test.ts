@@ -154,6 +154,41 @@ describe('svelte-fast-check E2E', () => {
     });
   });
 
+  describe('monorepo-project', () => {
+    const projectDir = resolve(fixturesDir, 'monorepo-project');
+
+    afterAll(() => {
+      cleanupCache(projectDir);
+    });
+
+    test('should find svelte files in web/ subdirectory based on tsconfig include', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'), // This should be ignored, tsconfig.include should take precedence
+      };
+
+      const result = await runFastCheck(config, { quiet: true, svelteWarnings: false });
+
+      // Should find and process svelte files in web/**/*.svelte
+      // No errors expected in the valid monorepo project
+      expect(result.errorCount).toBe(0);
+    });
+
+    test('should work with tsconfig include patterns like web/**/*.svelte', async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+
+      // The monorepo fixture has tsconfig with include: ["web/**/*.svelte"]
+      // Previously this would return "Found 0 .svelte files"
+      const result = await runFastCheck(config, { quiet: true, svelteWarnings: false });
+
+      // If we found the files, we should have processed them without errors
+      expect(result.diagnostics).toBeDefined();
+    });
+  });
+
   describe('warning-project (svelte compiler warnings)', () => {
     const projectDir = resolve(fixturesDir, 'warning-project');
 

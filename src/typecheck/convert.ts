@@ -72,13 +72,13 @@ export function ensureCacheDir(config: FastCheckConfig): void {
 export async function convertAllSvelteFiles(config: FastCheckConfig): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
-  const files = globSync('**/*.svelte', { cwd: config.srcDir });
+  const files = findSvelteFiles(config);
   console.log(`Found ${files.length} .svelte files`);
 
   // Parallel conversion with async IO via Promise.all
   const results = await Promise.all(
     files.map((file) => {
-      const sourcePath = resolve(config.srcDir, file);
+      const sourcePath = resolve(config.rootDir, file);
       return convertSvelteFileAsync(config, sourcePath);
     })
   );
@@ -165,7 +165,7 @@ async function loadSourcemap(mapPath: string): Promise<SourceMapData | null> {
 export async function convertChangedFiles(config: FastCheckConfig): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
-  const files = globSync('**/*.svelte', { cwd: config.srcDir });
+  const files = findSvelteFiles(config);
   const validTsxPaths = new Set<string>();
 
   // Classify files that need conversion vs files to skip
@@ -177,7 +177,7 @@ export async function convertChangedFiles(config: FastCheckConfig): Promise<Conv
   }> = [];
 
   for (const file of files) {
-    const sourcePath = resolve(config.srcDir, file);
+    const sourcePath = resolve(config.rootDir, file);
     const outputPath = getTsxPath(config, sourcePath);
     const mapPath = getMapPath(config, sourcePath);
 
@@ -375,13 +375,20 @@ export async function generateTsconfig(
   return tsconfigPath;
 }
 
+/** Parsed tsconfig structure */
+interface ParsedTsconfig {
+  compilerOptions?: Record<string, unknown>;
+  include?: string[];
+  exclude?: string[];
+}
+
 /**
  * Read project tsconfig.json (recursively resolve extends chain)
  */
 function readTypesFromTsconfig(
   rootDir: string,
   tsconfigFileName: string = 'tsconfig.json'
-): { compilerOptions?: Record<string, unknown>; exclude?: string[] } | null {
+): ParsedTsconfig | null {
   const tsconfigPath = resolve(rootDir, tsconfigFileName);
   if (!existsSync(tsconfigPath)) return null;
 
@@ -403,6 +410,7 @@ function readTypesFromTsconfig(
             ...parentTsconfig.compilerOptions,
             ...tsconfig.compilerOptions,
           },
+          include: tsconfig.include || parentTsconfig.include,
           exclude: tsconfig.exclude || parentTsconfig.exclude,
         };
       }
@@ -412,4 +420,48 @@ function readTypesFromTsconfig(
   } catch {
     return null;
   }
+}
+
+/**
+ * Get svelte file patterns from tsconfig.json include
+ * Falls back to default patterns if not specified
+ */
+export function getSvelteFilePatterns(rootDir: string): string[] {
+  const tsconfig = readTypesFromTsconfig(rootDir);
+  
+  if (tsconfig?.include) {
+    // Filter only .svelte patterns from include
+    const sveltePatterns = tsconfig.include.filter(
+      (pattern) => pattern.includes('.svelte') || pattern.endsWith('.svelte')
+    );
+    
+    if (sveltePatterns.length > 0) {
+      return sveltePatterns;
+    }
+  }
+  
+  // Default: look in src directory (SvelteKit convention)
+  return ['src/**/*.svelte'];
+}
+
+/**
+ * Find all svelte files based on tsconfig include patterns
+ */
+export function findSvelteFiles(config: FastCheckConfig): string[] {
+  const patterns = getSvelteFilePatterns(config.rootDir);
+  const tsconfig = readTypesFromTsconfig(config.rootDir);
+  const exclude = tsconfig?.exclude || [];
+  
+  const files: string[] = [];
+  
+  for (const pattern of patterns) {
+    const matches = globSync(pattern, { 
+      cwd: config.rootDir,
+      ignore: [...exclude, '**/node_modules/**'],
+    });
+    files.push(...matches);
+  }
+  
+  // Remove duplicates and return
+  return [...new Set(files)];
 }

@@ -9,8 +9,8 @@ import { compile } from 'svelte/compiler';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync, statSync, readFileSync, mkdirSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
-import { globSync } from 'glob';
 import type { FastCheckConfig, MappedDiagnostic, SvelteWarning } from '../types';
+import { findSvelteFiles } from '../typecheck/convert';
 
 /** Cache directory for warnings */
 const WARNINGS_DIR = 'warnings';
@@ -86,12 +86,12 @@ function warningToDiagnostic(warning: SvelteWarning, rootDir: string): MappedDia
 export async function collectAllSvelteWarnings(
   config: FastCheckConfig
 ): Promise<MappedDiagnostic[]> {
-  const files = globSync('**/*.svelte', { cwd: config.srcDir });
+  const files = findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
 
   const results = await Promise.all(
     files.map(async (file) => {
-      const sourcePath = resolve(config.srcDir, file);
+      const sourcePath = resolve(config.rootDir, file);
       const content = await readFile(sourcePath, 'utf-8');
       const warnings = getSvelteWarnings(sourcePath, content);
       return warnings.map((w) => warningToDiagnostic(w, config.rootDir));
@@ -113,12 +113,12 @@ export async function collectChangedSvelteWarnings(
 ): Promise<MappedDiagnostic[]> {
   ensureWarningsCacheDir(config);
 
-  const files = globSync('**/*.svelte', { cwd: config.srcDir });
+  const files = findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
 
   const results = await Promise.all(
     files.map(async (file) => {
-      const sourcePath = resolve(config.srcDir, file);
+      const sourcePath = resolve(config.rootDir, file);
       const cachePath = getWarningsCachePath(config, sourcePath);
 
       // Check if cache is valid
