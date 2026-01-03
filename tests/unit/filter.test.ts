@@ -380,6 +380,88 @@ const value = 2;
     });
   });
 
+  describe("TS2322 Snippet type mismatch", () => {
+    test("should filter Snippet type errors with unique symbol in .svelte.tsx", () => {
+      const content = `const snippet: Snippet<[{ close: () => void }]> = props => {};`;
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2322,
+          "Type '(props: { close: () => void; }) => { '{@render ...} must be called with a Snippet': \"import type { Snippet } from 'svelte'\"; } & unique symbol' is not assignable to type 'Snippet<[{ close: () => void; }]>'.",
+          "test.svelte.tsx",
+          1,
+          7,
+        ),
+      ];
+
+      const result = filterFalsePositives(
+        diagnostics,
+        new Map([["test.svelte.tsx", content]]),
+      );
+
+      expect(result).toHaveLength(0);
+    });
+
+    test("should keep Snippet errors without unique symbol pattern", () => {
+      const content = `const snippet: Snippet<[string]> = (x: number) => {};`;
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2322,
+          "Type '(x: number) => void' is not assignable to type 'Snippet<[string]>'.",
+          "test.svelte.tsx",
+          1,
+          7,
+        ),
+      ];
+
+      const result = filterFalsePositives(
+        diagnostics,
+        new Map([["test.svelte.tsx", content]]),
+      );
+
+      expect(result).toHaveLength(1);
+    });
+
+    test("should keep TS2322 errors in non-.svelte.tsx files", () => {
+      const content = `const x: string = 123;`;
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2322,
+          "Type 'number' is not assignable to type 'Snippet<[]>' with unique symbol.",
+          "test.ts", // not .svelte.tsx
+          1,
+          7,
+        ),
+      ];
+
+      const result = filterFalsePositives(
+        diagnostics,
+        new Map([["test.ts", content]]),
+      );
+
+      expect(result).toHaveLength(1);
+    });
+
+    test("should keep regular TS2322 type errors", () => {
+      const content = `const x: string = 123;`;
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2322,
+          "Type 'number' is not assignable to type 'string'.",
+          "test.svelte.tsx",
+          1,
+          7,
+        ),
+      ];
+
+      const result = filterFalsePositives(
+        diagnostics,
+        new Map([["test.svelte.tsx", content]]),
+      );
+
+      expect(result).toHaveLength(1);
+    });
+  });
+
   describe("edge cases", () => {
     test("should keep errors when tsx content not available", () => {
       const diagnostics: Diagnostic[] = [
