@@ -406,40 +406,75 @@ interface ParsedTsconfig {
 }
 
 /**
+ * Resolve patterns from a tsconfig relative to rootDir.
+ * Converts patterns like "../src/**\/*.svelte" (relative to .svelte-kit/)
+ * to "src/**\/*.svelte" (relative to rootDir).
+ */
+function resolvePatterns(
+  patterns: string[] | undefined,
+  patternBaseDir: string,
+  rootDir: string
+): string[] | undefined {
+  if (!patterns) return undefined;
+
+  return patterns.map((pattern) => {
+    // If pattern starts with ../ or ./, resolve it relative to patternBaseDir
+    if (pattern.startsWith('../') || pattern.startsWith('./')) {
+      const absolutePath = resolve(patternBaseDir, pattern);
+      return relative(rootDir, absolutePath);
+    }
+    return pattern;
+  });
+}
+
+/**
  * Read project tsconfig.json (recursively resolve extends chain)
+ * All include/exclude patterns are resolved relative to rootDir.
  */
 function readTypesFromTsconfig(
   rootDir: string,
-  tsconfigFileName: string = 'tsconfig.json'
+  tsconfigFileName: string = 'tsconfig.json',
+  tsconfigDir?: string
 ): ParsedTsconfig | null {
-  const tsconfigPath = resolve(rootDir, tsconfigFileName);
+  const baseDir = tsconfigDir || rootDir;
+  const tsconfigPath = resolve(baseDir, tsconfigFileName);
   if (!existsSync(tsconfigPath)) return null;
 
   try {
     const content = readFileSync(tsconfigPath, 'utf-8');
     const tsconfig = JSON.parse(content);
-    const tsconfigDir = dirname(tsconfigPath);
+    const currentDir = dirname(tsconfigPath);
 
     // If extends is present, recursively read and merge parent settings
     if (tsconfig.extends) {
-      const extendsPath = resolve(tsconfigDir, tsconfig.extends);
+      const extendsPath = resolve(currentDir, tsconfig.extends);
       const parentDir = dirname(extendsPath);
       const parentFileName = extendsPath.split('/').pop() || 'tsconfig.json';
 
-      const parentTsconfig = readTypesFromTsconfig(parentDir, parentFileName);
+      const parentTsconfig = readTypesFromTsconfig(rootDir, parentFileName, parentDir);
       if (parentTsconfig) {
+        // Resolve current tsconfig's patterns relative to rootDir
+        const resolvedInclude = resolvePatterns(tsconfig.include, currentDir, rootDir);
+        const resolvedExclude = resolvePatterns(tsconfig.exclude, currentDir, rootDir);
+
         return {
           compilerOptions: {
             ...parentTsconfig.compilerOptions,
             ...tsconfig.compilerOptions,
           },
-          include: tsconfig.include || parentTsconfig.include,
-          exclude: tsconfig.exclude || parentTsconfig.exclude,
+          // Use current tsconfig's patterns if present, otherwise parent's (already resolved)
+          include: resolvedInclude || parentTsconfig.include,
+          exclude: resolvedExclude || parentTsconfig.exclude,
         };
       }
     }
 
-    return tsconfig;
+    // Resolve patterns for non-extended tsconfig
+    return {
+      compilerOptions: tsconfig.compilerOptions,
+      include: resolvePatterns(tsconfig.include, currentDir, rootDir),
+      exclude: resolvePatterns(tsconfig.exclude, currentDir, rootDir),
+    };
   } catch {
     return null;
   }
@@ -452,10 +487,12 @@ function readTypesFromTsconfig(
 export function findSvelteFiles(config: FastCheckConfig): string[] {
   const tsconfig = readTypesFromTsconfig(config.rootDir);
 
-  // Extract .svelte patterns from tsconfig, or use default
+  // Extract *.svelte patterns from tsconfig, or use default
+  // Use regex to match patterns ending with .svelte (e.g., **/*.svelte)
+  // This avoids matching .svelte-kit paths
   let patterns = ['src/**/*.svelte'];
   if (tsconfig?.include) {
-    const sveltePatterns = tsconfig.include.filter((pattern) => pattern.includes('.svelte'));
+    const sveltePatterns = tsconfig.include.filter((pattern) => /\.svelte$/.test(pattern));
     if (sveltePatterns.length > 0) {
       patterns = sveltePatterns;
     }
