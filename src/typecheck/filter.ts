@@ -1,33 +1,98 @@
 /**
  * False positive filtering module
  *
- * Ported from svelte-check's DiagnosticsProvider logic
- * to filter false positives from svelte2tsx generated code.
+ * This module filters out false positive TypeScript errors that occur due to:
+ *
+ * 1. svelte2tsx generated code: svelte2tsx converts .svelte files to .tsx,
+ *    generating helper code that can produce spurious type errors.
+ *    - Uses Ωignore_startΩ and Ωignore_endΩ comment markers
+ *    - Ported from svelte-check's DiagnosticsProvider logic
+ *
+ * 2. tsgo vs tsc differences: We use tsgo (TypeScript Go port) instead of tsc.
+ *    tsgo has stricter or different type inference in some cases, causing errors
+ *    that tsc (used by svelte-check) does not report.
+ *
+ *    Known tsgo issues related to our filters:
+ *    - https://github.com/microsoft/typescript-go/issues/2060
+ *      "Typescript-go does not infer large generics due to maximum length"
+ *    - https://github.com/microsoft/typescript-go/issues/1616
+ *      "Type Ordering" issues with complex generic inference
+ *
+ * Filters from svelte-check (common to both tsc and tsgo):
+ * - TS2454: USED_BEFORE_ASSIGNED - export let props pattern
+ * - TS7028: UNUSED_LABEL - $: reactive statements
+ * - TS6387: DEPRECATED_SIGNATURE - $$_ generated variables
+ * - TS2300/1117: DUPLICATE_IDENTIFIER - JSX attribute patterns
+ * - TS17001: DUPLICATED_JSX_ATTRIBUTES - valid in Svelte
+ * - TS2741: PROPERTY_MISSING - bind:this type mismatch
+ * - Ignore region filtering
+ *
+ * Filters for tsgo-specific issues (tsc does not report these):
+ * - TS2345: ARG_TYPE_NOT_ASSIGNABLE in __sveltets_2_ensureComponent
+ *   - tsgo fails to infer complex generic types (e.g., Storybook's defineMeta)
+ *   - tsc correctly infers these types
+ *   - Related: https://github.com/microsoft/typescript-go/issues/2060
+ *
+ * - TS7006/7031: IMPLICIT_ANY in component prop callbacks
+ *   - tsgo doesn't infer callback parameter types in generated code
+ *   - tsc handles these correctly
+ *
+ * - TS2307: MODULE_NOT_FOUND for asset imports (.avif, .png, etc.)
+ *   - Both report this, but bundlers handle it at runtime
+ *
+ * - TS2614: NO_EXPORTED_MEMBER for .svelte type exports
+ *   - Module resolution differences between tsgo and tsc
  */
 
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import type { Diagnostic } from '../types';
 
-/** TS error codes to filter */
+/**
+ * TS error codes to filter
+ *
+ * Categories:
+ * - [svelte-check]: Ported from svelte-check, applies to both tsc and tsgo
+ * - [tsgo-specific]: Only needed for tsgo, tsc doesn't report these
+ * - [bundler]: Errors that bundlers (Vite/Webpack) handle, not TypeScript
+ */
 const DiagnosticCode = {
-  // Filter targets
+  // [svelte-check] Filter targets
   USED_BEFORE_ASSIGNED: 2454, // export let x pattern
   UNUSED_LABEL: 7028, // $: reactive statement
   DEPRECATED_SIGNATURE: 6387, // $$_ generated variables
 
-  // Conditional filtering (Element attributes)
+  // [svelte-check] Conditional filtering (Element attributes)
   DUPLICATE_IDENTIFIER: 2300,
   MULTIPLE_PROPS_SAME_NAME: 1117,
 
-  // JSX related (ignore in svelte components)
+  // [svelte-check] JSX related (ignore in svelte components)
   DUPLICATED_JSX_ATTRIBUTES: 17001,
 
-  // bind:this related - svelte2tsx infers component instance as SvelteComponent
+  // [svelte-check] bind:this related - svelte2tsx infers component instance as SvelteComponent
   PROPERTY_MISSING: 2741,
 
-  // Store related - should NOT be filtered even in ignore regions
+  // [svelte-check] Store related - should NOT be filtered even in ignore regions
   NO_OVERLOAD_MATCHES_CALL: 2769, // Invalid store usage (e.g., $page instead of page)
+
+  // [tsgo-specific] Component type errors from svelte2tsx ensureComponent
+  // tsgo fails to infer complex generic return types (e.g., Storybook defineMeta)
+  // tsc correctly infers these, so svelte-check doesn't need this filter
+  // Issue: https://github.com/microsoft/typescript-go/issues/2060
+  ARG_TYPE_NOT_ASSIGNABLE: 2345,
+
+  // [tsgo-specific] Implicit any in callback parameters
+  // tsgo doesn't infer callback parameter types in svelte2tsx generated code
+  // Issue: https://github.com/microsoft/typescript-go/issues/1616
+  IMPLICIT_ANY_PARAMETER: 7006,
+  IMPLICIT_ANY_BINDING: 7031,
+
+  // [bundler] Module resolution errors that bundlers handle
+  MODULE_NOT_FOUND: 2307,
+
+  // [tsgo-specific] Module resolution differences
+  // Issue: https://github.com/microsoft/typescript-go/issues/1616
+  NO_EXPORTED_MEMBER: 2614,
 } as const;
 
 /** Generated variable pattern (Svelte 5 internal variables) */
@@ -51,8 +116,9 @@ export function filterFalsePositives(
     const content = tsxContents.get(d.file);
     if (!content) return true; // Can't filter without content, keep it
 
-    // 1. Ignore errors inside ignore regions
-    // Exception: Store-related errors (TS2769) should be kept even in ignore regions
+    // 1. [svelte-check] Ignore errors inside ignore regions
+    // svelte2tsx wraps generated code in /*Ωignore_startΩ*/ ... /*Ωignore_endΩ*/ markers.
+    // Exception: Store-related errors (TS2769) should be kept even in ignore regions.
     if (isInGeneratedCode(content, d)) {
       // Check if this is a store-related error that should be preserved
       if (d.code === DiagnosticCode.NO_OVERLOAD_MATCHES_CALL) {
@@ -64,26 +130,26 @@ export function filterFalsePositives(
       return false;
     }
 
-    // 2. USED_BEFORE_ASSIGNED (TS2454): ignore export let props
+    // 2. [svelte-check] USED_BEFORE_ASSIGNED (TS2454): ignore export let props
     if (d.code === DiagnosticCode.USED_BEFORE_ASSIGNED) {
       if (isExportLetProp(content, d)) {
         return false;
       }
     }
 
-    // 3. UNUSED_LABEL (TS7028): ignore $: reactive statements
+    // 3. [svelte-check] UNUSED_LABEL (TS7028): ignore $: reactive statements
     if (d.code === DiagnosticCode.UNUSED_LABEL) {
       return false;
     }
 
-    // 4. DEPRECATED_SIGNATURE (TS6387): ignore $$_ generated variables
+    // 4. [svelte-check] DEPRECATED_SIGNATURE (TS6387): ignore $$_ generated variables
     if (d.code === DiagnosticCode.DEPRECATED_SIGNATURE) {
       if (generatedVarRegex.test(d.message)) {
         return false;
       }
     }
 
-    // 5. DUPLICATE_IDENTIFIER / MULTIPLE_PROPS_SAME_NAME: ignore in JSX attributes
+    // 5. [svelte-check] DUPLICATE_IDENTIFIER / MULTIPLE_PROPS_SAME_NAME: ignore in JSX attributes
     if (
       d.code === DiagnosticCode.DUPLICATE_IDENTIFIER ||
       d.code === DiagnosticCode.MULTIPLE_PROPS_SAME_NAME
@@ -94,15 +160,63 @@ export function filterFalsePositives(
       }
     }
 
-    // 6. DUPLICATED_JSX_ATTRIBUTES: valid in Svelte
+    // 6. [svelte-check] DUPLICATED_JSX_ATTRIBUTES: valid in Svelte
     if (d.code === DiagnosticCode.DUPLICATED_JSX_ATTRIBUTES) {
       return false;
     }
 
-    // 7. PROPERTY_MISSING (TS2741): ignore SvelteComponent type mismatch from bind:this
+    // 7. [svelte-check] PROPERTY_MISSING (TS2741): ignore SvelteComponent type mismatch from bind:this
     // svelte2tsx infers bind:this as SvelteComponent, missing exported function types
     if (d.code === DiagnosticCode.PROPERTY_MISSING) {
       if (isBindThisAssignment(content, d)) {
+        return false;
+      }
+    }
+
+    // 8. [tsgo-specific] ARG_TYPE_NOT_ASSIGNABLE (TS2345): filter ensureComponent errors
+    // tsgo fails to infer complex generic return types in libraries like Storybook's defineMeta.
+    // Example: `const { Story } = defineMeta({...})` - tsgo infers Story as `{}` instead of
+    // the correct component type, causing TS2345 in `__sveltets_2_ensureComponent(Story)`.
+    // tsc correctly infers these types, so svelte-check doesn't need this filter.
+    // Issue: https://github.com/microsoft/typescript-go/issues/2060
+    if (d.code === DiagnosticCode.ARG_TYPE_NOT_ASSIGNABLE) {
+      if (
+        d.message.includes('ConstructorOfATypedSvelteComponent') ||
+        isInEnsureComponentCall(content, d)
+      ) {
+        return false;
+      }
+    }
+
+    // 9. [tsgo-specific] IMPLICIT_ANY (TS7006/TS7031): filter in component prop callbacks
+    // tsgo doesn't infer callback parameter types in svelte2tsx generated code.
+    // Example: `new $$_Component({ props: { "onclick": value => {...} } })`
+    // tsc infers `value` type from the component's props, tsgo leaves it as implicit any.
+    // Issue: https://github.com/microsoft/typescript-go/issues/1616
+    if (
+      d.code === DiagnosticCode.IMPLICIT_ANY_PARAMETER ||
+      d.code === DiagnosticCode.IMPLICIT_ANY_BINDING
+    ) {
+      if (d.file.endsWith('.svelte.tsx') && isInComponentPropCallback(content, d)) {
+        return false;
+      }
+    }
+
+    // 10. [bundler] MODULE_NOT_FOUND (TS2307): filter asset imports (images, etc.)
+    // Both tsc and tsgo report this, but bundlers (Vite/Webpack) handle these at build time.
+    // Examples: import logo from './logo.png', import icon from './icon.avif'
+    if (d.code === DiagnosticCode.MODULE_NOT_FOUND) {
+      if (isAssetImport(d.message)) {
+        return false;
+      }
+    }
+
+    // 11. [tsgo-specific] NO_EXPORTED_MEMBER (TS2614): filter svelte component type exports
+    // tsgo has different module resolution behavior for .svelte files.
+    // tsc resolves these correctly via svelte2tsx's type definitions.
+    // Issue: https://github.com/microsoft/typescript-go/issues/1616
+    if (d.code === DiagnosticCode.NO_EXPORTED_MEMBER) {
+      if (d.message.includes('*.svelte')) {
         return false;
       }
     }
@@ -230,6 +344,71 @@ function isBindThisAssignment(content: string, d: Diagnostic): boolean {
   // Pattern: `varName = $$_...;` (bind:this assignment)
   // svelte2tsx generates temporary variables starting with $$_
   return /\w+\s*=\s*\$\$_\w+/.test(line);
+}
+
+/**
+ * Check if error is in __sveltets_2_ensureComponent call
+ *
+ * svelte2tsx generates:
+ * `const $$_ComponentName = __sveltets_2_ensureComponent(ComponentName);`
+ */
+function isInEnsureComponentCall(content: string, d: Diagnostic): boolean {
+  const lines = content.split('\n');
+  if (d.line <= 0 || d.line > lines.length) return false;
+
+  const line = lines[d.line - 1];
+  if (line === undefined) return false;
+
+  return line.includes('__sveltets_2_ensureComponent');
+}
+
+/**
+ * Check if error is in a component prop callback
+ *
+ * svelte2tsx generates code like:
+ * `new $$_Component({ props: { "onclick": value => { ... } } })`
+ */
+function isInComponentPropCallback(content: string, d: Diagnostic): boolean {
+  const lines = content.split('\n');
+  if (d.line <= 0 || d.line > lines.length) return false;
+
+  const line = lines[d.line - 1];
+  if (line === undefined) return false;
+
+  // Check context: look back up to 10 lines for component instantiation
+  const startLine = Math.max(0, d.line - 10);
+  const contextLines = lines.slice(startLine, d.line).join('\n');
+
+  // Check if we're inside a component instantiation block
+  if (
+    contextLines.includes('__sveltets_2_ensureComponent') ||
+    contextLines.includes('new $$_')
+  ) {
+    // Check for arrow function callback pattern on current line
+    if (/"\w+":\s*(async\s+)?\(?\s*\w+\s*(,\s*\w+)*\s*\)?\s*=>/.test(line)) {
+      return true;
+    }
+    // Destructuring pattern: ([url, error]) =>
+    if (/\(\s*\[/.test(line) && /\]\s*\)\s*=>/.test(line)) {
+      return true;
+    }
+  }
+
+  // Snippet callbacks: {#snippet name(param)}
+  if (line.includes('#snippet') || /\(\s*\w+\s*\)\s*=>/.test(line)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check if error is about asset import (images, etc.)
+ * These are handled by bundlers like Vite/Webpack
+ */
+function isAssetImport(message: string): boolean {
+  const assetExtensions = ['.avif', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'];
+  return assetExtensions.some((ext) => message.includes(ext));
 }
 
 /**
