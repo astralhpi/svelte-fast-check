@@ -290,6 +290,11 @@ export interface GenerateTsconfigOptions {
 /**
  * Generate .fast-check/tsconfig.json for tsgo
  *
+ * Why we don't use "extends" in generated tsconfig:
+ * - tsgo has compatibility issues with some tsconfig options (rootDirs, certain path resolutions)
+ * - Instead, we read the project's tsconfig.json (following extends chain), merge settings,
+ *   and generate a standalone tsconfig with only the options tsgo supports well
+ *
  * Reads the project's tsconfig.json as a base,
  * and overrides only the settings required by fast-check.
  */
@@ -303,16 +308,19 @@ export async function generateTsconfig(
   // Read project tsconfig.json (following extends chain to .svelte-kit/tsconfig.json)
   const projectTsconfig = readTypesFromTsconfig(config.rootDir);
 
+  // Check if this is a SvelteKit project
+  const isSvelteKit = existsSync(resolve(config.rootDir, '.svelte-kit'));
+
   // Read paths from tsconfig.json, use SvelteKit defaults if not present
   const tsconfigPaths = (projectTsconfig?.compilerOptions?.paths as Record<string, string[]>) || {};
-  const defaultPaths: Record<string, string[]> = {
-    $lib: ['./../src/lib'],
-    '$lib/*': ['./../src/lib/*'],
-  };
+  const defaultPaths: Record<string, string[]> = isSvelteKit
+    ? {
+        $lib: ['./../src/lib'],
+        '$lib/*': ['./../src/lib/*'],
+      }
+    : {};
   // Priority: config.paths > tsconfig paths > defaults
-  // Also add '*' path for module resolution (replaces baseUrl in tsgo)
   const paths = {
-    '*': ['./../node_modules/*', './../*'],
     ...defaultPaths,
     ...tsconfigPaths,
     ...config.paths,
@@ -336,7 +344,9 @@ export async function generateTsconfig(
       tsBuildInfoFile: incremental ? './.tsbuildinfo' : undefined,
 
       // rootDirs: merge tsx folder with project root
-      rootDirs: ['..', '../.svelte-kit/types', './tsx'],
+      rootDirs: isSvelteKit
+        ? ['..', '../.svelte-kit/types', './tsx']
+        : ['..', './tsx'],
 
       // paths need to be converted to relative paths
       paths,
@@ -353,15 +363,21 @@ export async function generateTsconfig(
     // svelte2tsx shims + app.d.ts for DOM type overrides
     // Use absolute paths to svelte2tsx from svelte-fast-check's dependencies
     files: [
-      '../src/app.d.ts',
+      // SvelteKit app.d.ts for global type declarations
+      ...(isSvelteKit ? ['../src/app.d.ts'] : []),
       resolve(svelte2tsxPath, 'svelte-shims-v4.d.ts'),
       resolve(svelte2tsxPath, 'svelte-jsx-v4.d.ts'),
     ],
 
     include: [
-      '../.svelte-kit/ambient.d.ts',
-      '../.svelte-kit/non-ambient.d.ts',
-      '../.svelte-kit/types/**/$types.d.ts',
+      // SvelteKit generated types
+      ...(isSvelteKit
+        ? [
+            '../.svelte-kit/ambient.d.ts',
+            '../.svelte-kit/non-ambient.d.ts',
+            '../.svelte-kit/types/**/$types.d.ts',
+          ]
+        : []),
       '../src/**/*.ts',
       '../src/**/*.d.ts',
       './tsx/**/*.svelte.tsx',
