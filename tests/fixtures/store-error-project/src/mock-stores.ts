@@ -4,7 +4,7 @@
 // This simulates the Svelte 5 behavior where page is a rune, not a store
 export const page = {
   url: {
-    pathname: "/test",
+    pathname: '/test',
   },
 };
 
