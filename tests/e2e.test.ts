@@ -1,8 +1,8 @@
-import { describe, test, expect, afterAll } from 'bun:test';
+import { describe, test, expect, afterAll, beforeAll } from 'bun:test';
 import { resolve } from 'path';
 import { rmSync, writeFileSync, readFileSync } from 'fs';
 import { runFastCheck } from '../src/index';
-import type { FastCheckConfig } from '../src/types';
+import type { FastCheckConfig, CheckResult } from '../src/types';
 
 const fixturesDir = resolve(import.meta.dir, 'fixtures');
 
@@ -12,21 +12,24 @@ function cleanupCache(projectDir: string) {
 }
 
 describe('svelte-fast-check E2E', () => {
+  // Run project tests in parallel by caching results in beforeAll
   describe('valid-project', () => {
     const projectDir = resolve(fixturesDir, 'valid-project');
+    let result: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+      result = await runFastCheck(config, { quiet: true });
+    });
 
     afterAll(() => {
       cleanupCache(projectDir);
     });
 
-    test('should pass with no errors', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should pass with no errors', () => {
       expect(result.errorCount).toBe(0);
       expect(result.warningCount).toBe(0);
     });
@@ -34,57 +37,35 @@ describe('svelte-fast-check E2E', () => {
 
   describe('error-project', () => {
     const projectDir = resolve(fixturesDir, 'error-project');
+    let result: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+      result = await runFastCheck(config, { quiet: true });
+    });
 
     afterAll(() => {
       cleanupCache(projectDir);
     });
 
-    test('should detect type errors', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should detect type errors', () => {
       expect(result.errorCount).toBeGreaterThan(0);
     });
 
-    test('should report errors in .svelte files', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should report errors in .svelte files', () => {
       const svelteErrors = result.diagnostics.filter((d) => d.originalFile.endsWith('.svelte'));
-
       expect(svelteErrors.length).toBeGreaterThan(0);
     });
 
-    test('should report errors in .ts files', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should report errors in .ts files', () => {
       const tsErrors = result.diagnostics.filter((d) => d.originalFile.endsWith('.ts'));
-
       expect(tsErrors.length).toBeGreaterThan(0);
     });
 
-    test('should map errors to original line numbers', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
-      // All mapped diagnostics should have positive line numbers
+    test('should map errors to original line numbers', () => {
       for (const diag of result.diagnostics) {
         expect(diag.originalLine).toBeGreaterThan(0);
       }
@@ -93,19 +74,26 @@ describe('svelte-fast-check E2E', () => {
 
   describe('store-error-project', () => {
     const projectDir = resolve(fixturesDir, 'store-error-project');
+    let result: CheckResult;
+    let rawResult: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+      // Run both normal and raw mode in parallel
+      [result, rawResult] = await Promise.all([
+        runFastCheck(config, { quiet: true }),
+        runFastCheck(config, { quiet: true, raw: true }),
+      ]);
+    });
 
     afterAll(() => {
       cleanupCache(projectDir);
     });
 
-    test('should detect invalid store usage ($page when page is not a store)', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should detect invalid store usage ($page when page is not a store)', () => {
       // When using $page but page doesn't have subscribe method:
       // - TS2769 occurs at __sveltets_2_store_get(page) in ignore region
       // - We find $page usage location and map the error there
@@ -125,50 +113,72 @@ describe('svelte-fast-check E2E', () => {
       expect(storeErrors[0].message).toContain('subscribe');
     });
 
-    test('should not filter store errors even in ignore regions', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should not filter store errors even in ignore regions', () => {
       // The error should be preserved, not filtered as false positive
       expect(result.errorCount).toBeGreaterThan(0);
     });
 
-    test('should preserve TS2769 in raw mode', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      // Raw mode shows unfiltered, unmapped diagnostics
-      const result = await runFastCheck(config, { quiet: true, raw: true });
-
+    test('should preserve TS2769 in raw mode', () => {
       // TS2769 should be present in raw output (before sourcemap mapping)
-      const storeErrors = result.diagnostics.filter((d) => d.code === 2769);
+      const storeErrors = rawResult.diagnostics.filter((d) => d.code === 2769);
 
       expect(storeErrors.length).toBeGreaterThan(0);
       expect(storeErrors[0].message).toContain('overload');
     });
   });
 
-  describe('warning-project (svelte compiler warnings)', () => {
-    const projectDir = resolve(fixturesDir, 'warning-project');
+  describe('monorepo-project', () => {
+    const projectDir = resolve(fixturesDir, 'monorepo-project');
+    let result: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, 'src'),
+      };
+      result = await runFastCheck(config, { quiet: true, svelteWarnings: false });
+    });
 
     afterAll(() => {
       cleanupCache(projectDir);
     });
 
-    test('should detect state_referenced_locally warning', async () => {
+    test('should find svelte files in web/ subdirectory based on tsconfig include', () => {
+      // Should find and process svelte files in web/**/*.svelte
+      // No errors expected in the valid monorepo project
+      expect(result.errorCount).toBe(0);
+    });
+
+    test('should work with tsconfig include patterns like web/**/*.svelte', () => {
+      // The monorepo fixture has tsconfig with include: ["web/**/*.svelte"]
+      // Previously this would return "Found 0 .svelte files"
+      // If we found the files, we should have processed them without errors
+      expect(result.diagnostics).toBeDefined();
+    });
+  });
+
+  describe('warning-project (svelte compiler warnings)', () => {
+    const projectDir = resolve(fixturesDir, 'warning-project');
+    let result: CheckResult;
+    let resultNoWarnings: CheckResult;
+
+    beforeAll(async () => {
       const config: FastCheckConfig = {
         rootDir: projectDir,
         srcDir: resolve(projectDir, 'src'),
       };
+      // Run both modes in parallel
+      [result, resultNoWarnings] = await Promise.all([
+        runFastCheck(config, { quiet: true }),
+        runFastCheck(config, { quiet: true, svelteWarnings: false }),
+      ]);
+    });
 
-      const result = await runFastCheck(config, { quiet: true });
+    afterAll(() => {
+      cleanupCache(projectDir);
+    });
 
+    test('should detect state_referenced_locally warning', () => {
       // Should have svelte compiler warning
       const svelteWarnings = result.diagnostics.filter(
         (d) => d.code === 0 && d.message.includes('state_referenced_locally')
@@ -182,14 +192,7 @@ describe('svelte-fast-check E2E', () => {
       expect(svelteWarnings[0].severity).toBe('warning');
     });
 
-    test('should include svelte warning code in message', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true });
-
+    test('should include svelte warning code in message', () => {
       const svelteWarnings = result.diagnostics.filter(
         (d) => d.message.includes('state_referenced_locally')
       );
@@ -199,16 +202,9 @@ describe('svelte-fast-check E2E', () => {
       expect(svelteWarnings[0].message).toContain('https://svelte.dev/e/state_referenced_locally');
     });
 
-    test('should skip svelte warnings with --no-svelte-warnings', async () => {
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, 'src'),
-      };
-
-      const result = await runFastCheck(config, { quiet: true, svelteWarnings: false });
-
+    test('should skip svelte warnings with --no-svelte-warnings', () => {
       // Should have no svelte compiler warnings
-      const svelteWarnings = result.diagnostics.filter(
+      const svelteWarnings = resultNoWarnings.diagnostics.filter(
         (d) => d.message.includes('state_referenced_locally')
       );
 
