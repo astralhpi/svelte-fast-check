@@ -8,6 +8,16 @@ import { cli } from "cleye";
 import { runFastCheck } from "./index";
 import type { FastCheckConfig } from "./types";
 
+/**
+ * CLI-specific error for user-friendly messages
+ */
+class CliError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CliError";
+  }
+}
+
 const argv = cli({
   name: "svelte-fast-check",
   version: "0.2.1",
@@ -47,17 +57,16 @@ const argv = cli({
 });
 
 /**
- * Parse tsconfig.json to derive rootDir
+ * Derive rootDir and srcDir from tsconfig.json path
  */
-function parseProjectConfig(tsconfigPath: string): {
+function deriveProjectPaths(tsconfigPath: string): {
   rootDir: string;
   srcDir: string;
 } {
   const absolutePath = resolve(process.cwd(), tsconfigPath);
 
   if (!existsSync(absolutePath)) {
-    console.error(`Error: tsconfig.json not found at ${absolutePath}`);
-    process.exit(1);
+    throw new CliError(`tsconfig.json not found at ${absolutePath}`);
   }
 
   // rootDir is the directory containing tsconfig.json
@@ -78,17 +87,15 @@ async function main() {
 
   // Validate: --config should not receive .json files
   if (configArg?.endsWith(".json")) {
-    console.error(
-      `Error: --config expects a JavaScript/TypeScript config file (e.g., svelte-fast-check.config.ts)`,
+    throw new CliError(
+      `--config expects a JavaScript/TypeScript config file (e.g., svelte-fast-check.config.ts)\n       Did you mean --project ${configArg}?`,
     );
-    console.error(`       Did you mean --project ${configArg}?`);
-    process.exit(1);
   }
 
   // Determine rootDir based on --project flag or cwd
   let projectConfig: { rootDir: string; srcDir: string } | undefined;
   if (projectArg) {
-    projectConfig = parseProjectConfig(projectArg);
+    projectConfig = deriveProjectPaths(projectArg);
   }
 
   // default config (SvelteKit project)
@@ -109,8 +116,8 @@ async function main() {
       const loaded = await import(configPath);
       config = { ...config, ...loaded.default };
     } catch (e) {
-      console.error(`Failed to load config from ${configPath}:`, e);
-      process.exit(1);
+      const detail = e instanceof Error ? e.message : String(e);
+      throw new CliError(`Failed to load config from ${configPath}: ${detail}`);
     }
   }
 
@@ -141,6 +148,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Fatal error:", err);
+  if (err instanceof CliError) {
+    console.error(`Error: ${err.message}`);
+  } else {
+    console.error("Fatal error:", err);
+  }
   process.exit(1);
 });
