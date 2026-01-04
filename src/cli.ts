@@ -1,35 +1,51 @@
 /**
  * svelte-fast-check CLI
- *
- * Usage:
- *   svelte-fast-check                    # basic run
- *   svelte-fast-check --incremental      # convert only changed files (recommended)
- *   svelte-fast-check --raw              # raw output without filtering/mapping
- *   svelte-fast-check --no-svelte-warnings  # skip svelte compiler warnings
- *   svelte-fast-check --config ./svelte-fast-check.config.ts  # specify config file
  */
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { cli } from "cleye";
 import { runFastCheck } from "./index";
 import type { FastCheckConfig } from "./types";
 
+const argv = cli({
+  name: "svelte-fast-check",
+  version: "0.2.1",
+  flags: {
+    incremental: {
+      type: Boolean,
+      alias: "i",
+      description: "Convert only changed files (recommended)",
+      default: false,
+    },
+    raw: {
+      type: Boolean,
+      alias: "r",
+      description: "Raw output without filtering/mapping",
+      default: false,
+    },
+    svelteWarnings: {
+      type: Boolean,
+      description: "Show svelte compiler warnings",
+      default: true,
+    },
+    config: {
+      type: String,
+      alias: "c",
+      description: "Specify config file path",
+    },
+  },
+  help: {
+    description:
+      "Fast type checking for Svelte/SvelteKit projects using svelte2tsx + tsgo",
+  },
+});
+
 async function main() {
-  const args = process.argv.slice(2);
-
-  // --incremental: enable incremental mode
-  // without flag, defaults to non-incremental (clean mode)
-  const incremental = args.includes("--incremental") || args.includes("-i");
-
-  const rawMode = args.includes("--raw") || args.includes("-r");
-
-  // --no-svelte-warnings: disable svelte compiler warnings
-  const svelteWarnings = !args.includes("--no-svelte-warnings");
+  const { incremental, raw, svelteWarnings, config: configArg } = argv.flags;
 
   // find config file
-  const configIndex = args.findIndex((a) => a === "--config" || a === "-c");
   let configPath: string | undefined;
-  const configArg = configIndex !== -1 ? args[configIndex + 1] : undefined;
   if (configArg) {
     configPath = resolve(process.cwd(), configArg);
   }
@@ -68,7 +84,7 @@ async function main() {
 
   const result = await runFastCheck(config, {
     incremental,
-    raw: rawMode,
+    raw,
     svelteWarnings,
   });
 
