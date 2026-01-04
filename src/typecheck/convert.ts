@@ -33,6 +33,9 @@ const DEFAULT_CACHE_ROOT = ".fast-check";
 const TSX_DIR = "tsx";
 const MAPS_DIR = "maps";
 
+/** Module resolution strategies that need override to bundler */
+const MODULE_RESOLUTIONS_NEEDING_OVERRIDE = ["nodenext", "node16"];
+
 function getCacheRoot(config: FastCheckConfig): string {
   return config.cacheDir || DEFAULT_CACHE_ROOT;
 }
@@ -362,6 +365,16 @@ export async function generateTsconfig(
     ...config.paths,
   };
 
+  // NodeNext/Node16 doesn't resolve .svelte to .svelte.tsx, causing false negatives.
+  // Override to bundler resolution which handles this correctly.
+  // See: https://github.com/astralhpi/svelte-fast-check/issues/5
+  const moduleResolution = projectTsconfig?.compilerOptions?.moduleResolution;
+  const needsModuleResolutionOverride =
+    typeof moduleResolution === "string" &&
+    MODULE_RESOLUTIONS_NEEDING_OVERRIDE.includes(
+      moduleResolution.toLowerCase(),
+    );
+
   // Generate tsconfig for fast-check
   // Override only necessary settings on top of project tsconfig's compilerOptions
   const tsconfigContent = {
@@ -374,6 +387,10 @@ export async function generateTsconfig(
       skipLibCheck: true,
       jsx: "preserve",
       jsxImportSource: "svelte",
+
+      ...(needsModuleResolutionOverride
+        ? { moduleResolution: "bundler", module: "esnext" }
+        : {}),
 
       // Incremental build settings
       incremental,
