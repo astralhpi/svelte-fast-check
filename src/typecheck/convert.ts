@@ -362,6 +362,14 @@ export async function generateTsconfig(
     ...config.paths,
   };
 
+  // NodeNext/Node16 doesn't resolve .svelte to .svelte.tsx, causing false negatives.
+  // Override to bundler resolution which handles this correctly.
+  // See: https://github.com/astralhpi/svelte-fast-check/issues/5
+  const moduleResolution = projectTsconfig?.compilerOptions?.moduleResolution;
+  const needsModuleResolutionOverride =
+    typeof moduleResolution === "string" &&
+    ["nodenext", "node16"].includes(moduleResolution.toLowerCase());
+
   // Generate tsconfig for fast-check
   // Override only necessary settings on top of project tsconfig's compilerOptions
   const tsconfigContent = {
@@ -374,6 +382,10 @@ export async function generateTsconfig(
       skipLibCheck: true,
       jsx: "preserve",
       jsxImportSource: "svelte",
+
+      ...(needsModuleResolutionOverride
+        ? { moduleResolution: "bundler", module: "esnext" }
+        : {}),
 
       // Incremental build settings
       incremental,

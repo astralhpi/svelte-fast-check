@@ -164,6 +164,37 @@ describe("svelte-fast-check E2E", () => {
     });
   });
 
+  describe("component-props-error (moduleResolution: NodeNext)", () => {
+    const projectDir = resolve(fixturesDir, "component-props-error");
+    let result: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+      result = await runFastCheck(config, {
+        quiet: true,
+        svelteWarnings: false,
+      });
+    });
+
+    afterAll(() => {
+      cleanupCache(projectDir);
+    });
+
+    test("should detect invalid component prop", () => {
+      // Fixes #5: NodeNext wasn't resolving .svelte to .svelte.tsx
+      const propErrors = result.diagnostics.filter(
+        (d) => d.code === 2353 && d.message.includes('"ga"'),
+      );
+
+      expect(propErrors.length).toBe(1);
+      expect(propErrors[0].originalFile).toContain("App.svelte");
+      expect(propErrors[0].originalLine).toBe(6);
+    });
+  });
+
   describe("warning-project (svelte compiler warnings)", () => {
     const projectDir = resolve(fixturesDir, "warning-project");
     let result: CheckResult;
