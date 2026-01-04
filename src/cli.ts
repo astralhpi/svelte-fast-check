@@ -3,7 +3,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { cli } from "cleye";
 import { runFastCheck } from "./index";
 import type { FastCheckConfig } from "./types";
@@ -32,7 +32,12 @@ const argv = cli({
     config: {
       type: String,
       alias: "c",
-      description: "Specify config file path",
+      description: "Path to svelte-fast-check.config.ts",
+    },
+    project: {
+      type: String,
+      alias: "p",
+      description: "Path to tsconfig.json (for monorepo support)",
     },
   },
   help: {
@@ -41,21 +46,62 @@ const argv = cli({
   },
 });
 
+/**
+ * Parse tsconfig.json to derive rootDir
+ */
+function parseProjectConfig(tsconfigPath: string): {
+  rootDir: string;
+  srcDir: string;
+} {
+  const absolutePath = resolve(process.cwd(), tsconfigPath);
+
+  if (!existsSync(absolutePath)) {
+    console.error(`Error: tsconfig.json not found at ${absolutePath}`);
+    process.exit(1);
+  }
+
+  // rootDir is the directory containing tsconfig.json
+  const rootDir = dirname(absolutePath);
+  const srcDir = resolve(rootDir, "src");
+
+  return { rootDir, srcDir };
+}
+
 async function main() {
-  const { incremental, raw, svelteWarnings, config: configArg } = argv.flags;
+  const {
+    incremental,
+    raw,
+    svelteWarnings,
+    config: configArg,
+    project: projectArg,
+  } = argv.flags;
+
+  // Validate: --config should not receive .json files
+  if (configArg?.endsWith(".json")) {
+    console.error(
+      `Error: --config expects a JavaScript/TypeScript config file (e.g., svelte-fast-check.config.ts)`,
+    );
+    console.error(`       Did you mean --project ${configArg}?`);
+    process.exit(1);
+  }
+
+  // Determine rootDir based on --project flag or cwd
+  let projectConfig: { rootDir: string; srcDir: string } | undefined;
+  if (projectArg) {
+    projectConfig = parseProjectConfig(projectArg);
+  }
+
+  // default config (SvelteKit project)
+  let config: FastCheckConfig = {
+    rootDir: projectConfig?.rootDir ?? process.cwd(),
+    srcDir: projectConfig?.srcDir ?? resolve(process.cwd(), "src"),
+  };
 
   // find config file
   let configPath: string | undefined;
   if (configArg) {
     configPath = resolve(process.cwd(), configArg);
   }
-
-  // default config (SvelteKit project)
-  let config: FastCheckConfig = {
-    rootDir: process.cwd(),
-    srcDir: resolve(process.cwd(), "src"),
-    // paths are automatically read from tsconfig.json
-  };
 
   // load config file if exists
   if (configPath && existsSync(configPath)) {
@@ -68,9 +114,9 @@ async function main() {
     }
   }
 
-  // auto-detect svelte-fast-check.config.ts
+  // auto-detect svelte-fast-check.config.ts in rootDir
   const defaultConfigPath = resolve(
-    process.cwd(),
+    config.rootDir,
     "svelte-fast-check.config.ts",
   );
   if (!configPath && existsSync(defaultConfigPath)) {

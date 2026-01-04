@@ -66,4 +66,69 @@ describe("CLI", () => {
       expect(result.stdout).toMatch(/\d+\.\d+\.\d+/);
     });
   });
+
+  describe("--project flag", () => {
+    test("should work with monorepo tsconfig.json path", async () => {
+      const result = await runCli([
+        "--project",
+        "monorepo-project/tsconfig.json",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Found 1 .svelte files");
+      expect(result.stdout).toContain("No problems found");
+    });
+
+    test("-p should also work", async () => {
+      const result = await runCli(["-p", "monorepo-project/tsconfig.json"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No problems found");
+    });
+
+    test("should error if tsconfig.json not found", async () => {
+      const result = await runCli(["--project", "nonexistent/tsconfig.json"]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("tsconfig.json not found");
+    });
+  });
+
+  describe("--config flag validation", () => {
+    test("should error when given .json file", async () => {
+      const result = await runCli([
+        "--config",
+        "monorepo-project/tsconfig.json",
+      ]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        "--config expects a JavaScript/TypeScript config file",
+      );
+      expect(result.stderr).toContain("Did you mean --project");
+    });
+
+    test("-c with .json should also error", async () => {
+      const result = await runCli(["-c", "valid-project/tsconfig.json"]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Did you mean --project");
+    });
+  });
+
+  describe("type checking", () => {
+    test("should exit 0 for valid project", async () => {
+      const result = await runCli(["--project", "valid-project/tsconfig.json"]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("No problems found");
+    });
+
+    test("should exit 1 for project with errors", async () => {
+      const result = await runCli(["--project", "error-project/tsconfig.json"]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("error");
+    });
+  });
 });
