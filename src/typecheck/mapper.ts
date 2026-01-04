@@ -119,7 +119,7 @@ function mapDiagnostic(
 
   try {
     // SourceMapData is compatible with TraceMap as returned by svelte2tsx
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // biome-ignore lint/suspicious/noExplicitAny: TraceMap accepts svelte2tsx sourcemap format
     const tracer = new TraceMap(sourcemap as any);
     const original = originalPositionFor(tracer, {
       line: d.line,

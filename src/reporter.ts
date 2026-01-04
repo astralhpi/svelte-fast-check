@@ -23,8 +23,9 @@ const sourceCache = new Map<string, string[]>();
  * Get lines from source file (cached)
  */
 function getSourceLines(filePath: string, rootDir: string): string[] | null {
-  if (sourceCache.has(filePath)) {
-    return sourceCache.get(filePath)!;
+  const cached = sourceCache.get(filePath);
+  if (cached !== undefined) {
+    return cached;
   }
 
   const absolutePath = resolve(rootDir, filePath);
