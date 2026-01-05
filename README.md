@@ -102,8 +102,9 @@ Both results are merged and displayed together.
 
 ### Where the Time Goes
 
-On a 282-file Svelte project, svelte-fast-check takes ~2.6s (cold):
+On a 282-file Svelte project:
 
+**Cold (~2.6s):**
 ```
 svelte2tsx (~640ms)
     ↓
@@ -115,9 +116,22 @@ tsgo    svelte/compiler   ← runs in parallel
 ~2600ms
 ```
 
+**Incremental warm (~0.6s):**
+```
+svelte2tsx (skip unchanged)
+    ↓
+┌───┴───┐
+tsgo    svelte/compiler   ← both use cache
+(~500ms)   (skip unchanged)
+└───┬───┘
+    ↓
+~600ms
+```
+
 The speedup comes from:
 1. **tsgo** - 5-10x faster than tsc (Go-based, parallel, incremental)
 2. **Parallel execution** - Type checking and svelte/compiler run simultaneously
+3. **Incremental caching** - svelte2tsx and svelte/compiler skip unchanged files
 
 **Why keep svelte2tsx and svelte/compiler?**
 

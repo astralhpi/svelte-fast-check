@@ -102,8 +102,9 @@ export default {
 
 ### 시간 분석
 
-282개 Svelte 파일 프로젝트에서 svelte-fast-check는 ~2.6초가 걸립니다.(cold 기준)
+282개 Svelte 파일 프로젝트 기준:
 
+**Cold (~2.6초):**
 ```
 svelte2tsx (~640ms)
     ↓
@@ -115,9 +116,22 @@ tsgo    svelte/compiler   ← 병렬
 ~2600ms
 ```
 
+**Incremental warm (~0.6초):**
+```
+svelte2tsx (변경 없으면 스킵)
+    ↓
+┌───┴───┐
+tsgo    svelte/compiler   ← 둘 다 캐시 사용
+(~500ms)   (변경 없으면 스킵)
+└───┬───┘
+    ↓
+~600ms
+```
+
 빨라지는 이유:
 1. **tsgo** - tsc보다 5-10배 빠름 (Go 기반, 병렬, incremental)
 2. **병렬 실행** - 타입 체크와 svelte/compiler 동시 실행
+3. **Incremental 캐싱** - svelte2tsx, svelte/compiler 모두 변경된 파일만 처리
 
 **왜 svelte2tsx, svelte/compiler는 그대로 쓰나요?**
 
