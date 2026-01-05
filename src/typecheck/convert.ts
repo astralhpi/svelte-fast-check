@@ -13,10 +13,9 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { glob, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve } from "node:path";
-import { globSync } from "glob";
 import { svelte2tsx } from "svelte2tsx";
 import type {
   ConversionResult,
@@ -97,7 +96,7 @@ export async function convertAllSvelteFiles(
 ): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
-  const files = findSvelteFiles(config);
+  const files = await findSvelteFiles(config);
   console.log(`Found ${files.length} .svelte files`);
 
   // Parallel conversion with async IO via Promise.all
@@ -193,7 +192,7 @@ export async function convertChangedFiles(
 ): Promise<ConversionResult[]> {
   ensureCacheDir(config);
 
-  const files = findSvelteFiles(config);
+  const files = await findSvelteFiles(config);
   const validTsxPaths = new Set<string>();
 
   // Classify files that need conversion vs files to skip
@@ -246,7 +245,7 @@ export async function convertChangedFiles(
   const results = [...skippedResults, ...convertedResults];
 
   // Delete orphan tsx files (when source has been deleted)
-  const orphansDeleted = cleanOrphanTsxFiles(config, validTsxPaths);
+  const orphansDeleted = await cleanOrphanTsxFiles(config, validTsxPaths);
 
   const converted = convertedResults.filter((r) => r.success).length;
   const skipped = skippedResults.length;
@@ -262,15 +261,18 @@ export async function convertChangedFiles(
 /**
  * Delete orphan tsx files whose source has been deleted
  */
-function cleanOrphanTsxFiles(
+async function cleanOrphanTsxFiles(
   config: FastCheckConfig,
   validTsxPaths: Set<string>,
-): number {
+): Promise<number> {
   const cacheRoot = getCacheRoot(config);
   const tsxDir = resolve(config.rootDir, cacheRoot, TSX_DIR);
   if (!existsSync(tsxDir)) return 0;
 
-  const existingTsxFiles = globSync("**/*.svelte.tsx", { cwd: tsxDir });
+  const existingTsxFiles: string[] = [];
+  for await (const file of glob("**/*.svelte.tsx", { cwd: tsxDir })) {
+    existingTsxFiles.push(file);
+  }
   let deleted = 0;
 
   for (const file of existingTsxFiles) {
@@ -552,7 +554,9 @@ function readTypesFromTsconfig(
  * Find all svelte files based on tsconfig include patterns.
  * Reads include patterns from tsconfig.json and falls back to src/**\/*.svelte.
  */
-export function findSvelteFiles(config: FastCheckConfig): string[] {
+export async function findSvelteFiles(
+  config: FastCheckConfig,
+): Promise<string[]> {
   const tsconfig = readTypesFromTsconfig(config.rootDir);
 
   // Extract *.svelte patterns from tsconfig, or use default
@@ -570,11 +574,14 @@ export function findSvelteFiles(config: FastCheckConfig): string[] {
 
   const exclude = tsconfig?.exclude || [];
 
-  // Use single globSync call with pattern array for better performance
-  const files = globSync(patterns, {
+  // Use native glob from node:fs/promises
+  const files: string[] = [];
+  for await (const file of glob(patterns, {
     cwd: config.rootDir,
-    ignore: [...exclude, "**/node_modules/**"],
-  });
+    exclude: [...exclude, "**/node_modules/**"],
+  })) {
+    files.push(file);
+  }
 
   return [...new Set(files)];
 }

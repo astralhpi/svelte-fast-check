@@ -96,7 +96,7 @@ function warningToDiagnostic(
 export async function collectAllSvelteWarnings(
   config: FastCheckConfig,
 ): Promise<MappedDiagnostic[]> {
-  const files = findSvelteFiles(config);
+  const files = await findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
 
   const results = await Promise.all(
@@ -123,7 +123,7 @@ export async function collectChangedSvelteWarnings(
 ): Promise<MappedDiagnostic[]> {
   ensureWarningsCacheDir(config);
 
-  const files = findSvelteFiles(config);
+  const files = await findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
 
   const results = await Promise.all(
