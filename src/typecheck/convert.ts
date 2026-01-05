@@ -445,8 +445,6 @@ export async function generateTsconfig(
     ],
 
     exclude: [
-      "../src/**/*.spec.ts",
-      "../src/**/*.test.ts",
       "../node_modules/**",
       // Include excludes from tsconfig.json
       ...(projectTsconfig?.exclude || []).map((p: string) => `../${p}`),
