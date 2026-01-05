@@ -63,10 +63,29 @@ describe("svelte-fast-check E2E", () => {
     });
 
     test("should report errors in .ts files", () => {
-      const tsErrors = result.diagnostics.filter((d) =>
-        d.originalFile.endsWith(".ts"),
+      const tsErrors = result.diagnostics.filter(
+        (d) =>
+          d.originalFile.endsWith(".ts") &&
+          !d.originalFile.endsWith(".spec.ts") &&
+          !d.originalFile.endsWith(".test.ts"),
       );
       expect(tsErrors.length).toBeGreaterThan(0);
+    });
+
+    test("should report errors in .spec.ts and .test.ts test files", () => {
+      const testErrors = result.diagnostics.filter(
+        (d) =>
+          d.originalFile.endsWith(".spec.ts") ||
+          d.originalFile.endsWith(".test.ts"),
+      );
+      expect(testErrors.length).toBeGreaterThan(0);
+    });
+
+    test("should report errors in .stories.svelte files", () => {
+      const storiesErrors = result.diagnostics.filter((d) =>
+        d.originalFile.endsWith(".stories.svelte"),
+      );
+      expect(storiesErrors.length).toBeGreaterThan(0);
     });
 
     test("should map errors to original line numbers", () => {
