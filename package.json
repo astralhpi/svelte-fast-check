@@ -1,6 +1,6 @@
 {
   "name": "svelte-fast-check",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Up to 24x faster type and Svelte compiler warning checker for Svelte/SvelteKit projects using svelte2tsx + tsgo",
   "type": "module",
   "main": "./dist/index.js",
