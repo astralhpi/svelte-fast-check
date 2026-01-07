@@ -34,10 +34,10 @@ const argv = cli({
       description: "Raw output without filtering/mapping",
       default: false,
     },
-    svelteWarnings: {
+    noSvelteWarnings: {
       type: Boolean,
-      description: "Show svelte compiler warnings",
-      default: true,
+      description: "Disable svelte compiler warnings",
+      default: false,
     },
     config: {
       type: String,
@@ -80,7 +80,7 @@ async function main() {
   const {
     incremental,
     raw,
-    svelteWarnings,
+    noSvelteWarnings,
     config: configArg,
     project: projectArg,
   } = argv.flags;
@@ -138,7 +138,7 @@ async function main() {
   const result = await runFastCheck(config, {
     incremental,
     raw,
-    svelteWarnings,
+    svelteWarnings: !noSvelteWarnings,
   });
 
   // exit with code 1 if there are errors

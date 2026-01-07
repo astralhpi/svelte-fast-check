@@ -132,4 +132,24 @@ describe("CLI", () => {
       expect(result.stdout).toContain("error");
     });
   });
+
+  describe("--no-svelte-warnings flag", () => {
+    test("should suppress svelte compiler warnings", async () => {
+      const resultWithWarnings = await runCli([
+        "--project",
+        "warning-project/tsconfig.json",
+      ]);
+
+      expect(resultWithWarnings.stdout).toContain("state_referenced_locally");
+
+      const resultNoWarnings = await runCli([
+        "--project",
+        "warning-project/tsconfig.json",
+        "--no-svelte-warnings",
+      ]);
+
+      expect(resultNoWarnings.stdout).not.toContain("state_referenced_locally");
+      expect(resultNoWarnings.exitCode).toBe(0);
+    });
+  });
 });
