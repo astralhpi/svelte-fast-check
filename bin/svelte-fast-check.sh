@@ -1,8 +1,12 @@
 #!/bin/sh
 set -e
 
-# Detect the script's directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Detect the script's directory (resolve symlinks for macOS/Linux compatibility)
+SCRIPT_PATH="$0"
+if [ -L "$SCRIPT_PATH" ]; then
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 CLI_PATH="$SCRIPT_DIR/../dist/cli.js"
 
 # Detect runtime: prefer bun if available and in a bun project, otherwise use node

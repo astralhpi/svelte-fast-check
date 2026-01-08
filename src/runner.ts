@@ -17,7 +17,7 @@ import {
 } from "./reporter";
 import { countDiagnostics } from "./typecheck/parser";
 import type { TypeCheckInput, TypeCheckOutput } from "./typecheck/worker";
-import type { CheckResult, FastCheckConfig, MappedDiagnostic } from "./types";
+import type { CheckResult, FastCheckConfig } from "./types";
 
 const require = createRequire(import.meta.url);
 
