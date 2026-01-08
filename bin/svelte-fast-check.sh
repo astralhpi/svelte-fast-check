@@ -4,7 +4,8 @@ set -e
 # Detect the script's directory (resolve symlinks for macOS/Linux compatibility)
 SCRIPT_PATH="$0"
 if [ -L "$SCRIPT_PATH" ]; then
-  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+  LINK_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+  SCRIPT_PATH="$LINK_DIR/$(readlink "$SCRIPT_PATH")"
 fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 CLI_PATH="$SCRIPT_DIR/../dist/cli.js"
