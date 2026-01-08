@@ -44,7 +44,8 @@ Measured on a 282-file Svelte project (M4 Pro):
 
 ## Requirements
 
-- **Node.js 22+**
+- **macOS or Linux** (Windows is not supported)
+- **Node.js 22+** or **Bun**
 - Svelte 5+
 - TypeScript 5+
 

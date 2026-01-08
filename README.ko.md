@@ -42,7 +42,8 @@ svelte2tsx, svelte/compiler는 svelte-check와 동일한 패키지를 사용합�
 
 ## 요구사항
 
-- **Node.js 22+**
+- **macOS 또는 Linux** (Windows 미지원)
+- **Node.js 22+** 또는 **Bun**
 - Svelte 5+
 - TypeScript 5+
 
