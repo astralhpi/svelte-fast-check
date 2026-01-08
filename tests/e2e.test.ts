@@ -225,8 +225,9 @@ describe("svelte-fast-check E2E", () => {
         srcDir: resolve(projectDir, "src"),
       };
       // Run both modes in parallel
+      // Use useSvelteConfig: false to get unfiltered warnings for basic tests
       [result, resultNoWarnings] = await Promise.all([
-        runFastCheck(config, { quiet: true }),
+        runFastCheck(config, { quiet: true, useSvelteConfig: false }),
         runFastCheck(config, { quiet: true, svelteWarnings: false }),
       ]);
     });
@@ -284,6 +285,7 @@ describe("svelte-fast-check E2E", () => {
         const result1 = await runFastCheck(config, {
           quiet: true,
           incremental: true,
+          useSvelteConfig: false,
         });
         const warnings1 = result1.diagnostics.filter(
           (d) => d.source === "svelte",
@@ -295,6 +297,7 @@ describe("svelte-fast-check E2E", () => {
         const result2 = await runFastCheck(config, {
           quiet: true,
           incremental: true,
+          useSvelteConfig: false,
         });
         const warnings2 = result2.diagnostics.filter(
           (d) => d.source === "svelte",
@@ -323,6 +326,7 @@ describe("svelte-fast-check E2E", () => {
         const result3 = await runFastCheck(config, {
           quiet: true,
           incremental: true,
+          useSvelteConfig: false,
         });
         const warnings3 = result3.diagnostics.filter(
           (d) => d.source === "svelte",
@@ -332,6 +336,78 @@ describe("svelte-fast-check E2E", () => {
         // Restore original content
         writeFileSync(appPath, originalContent);
       }
+    });
+
+    test("should have svelteCode field in diagnostics", async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+
+      // Run without svelte.config.js to get unfiltered warnings
+      const resultUnfiltered = await runFastCheck(config, {
+        quiet: true,
+        useSvelteConfig: false,
+      });
+
+      const svelteWarnings = resultUnfiltered.diagnostics.filter(
+        (d) => d.source === "svelte",
+      );
+      expect(svelteWarnings.length).toBeGreaterThan(0);
+      expect(svelteWarnings[0].svelteCode).toBe("state_referenced_locally");
+    });
+
+    test("should filter warnings with warningFilter function", async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+
+      const resultFiltered = await runFastCheck(config, {
+        quiet: true,
+        useSvelteConfig: false,
+        warningFilter: (warning) => warning.code !== "state_referenced_locally",
+      });
+
+      const svelteWarnings = resultFiltered.diagnostics.filter(
+        (d) => d.source === "svelte",
+      );
+      expect(svelteWarnings.length).toBe(0);
+    });
+
+    test("should load warningFilter from svelte.config.js", async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+
+      // svelte.config.js in warning-project filters out state_referenced_locally
+      const resultFiltered = await runFastCheck(config, {
+        quiet: true,
+        // useSvelteConfig not specified - should auto-detect svelte.config.js
+      });
+
+      const svelteWarnings = resultFiltered.diagnostics.filter(
+        (d) => d.source === "svelte",
+      );
+      expect(svelteWarnings.length).toBe(0);
+    });
+
+    test("should ignore svelte.config.js with useSvelteConfig: false", async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+
+      const resultUnfiltered = await runFastCheck(config, {
+        quiet: true,
+        useSvelteConfig: false,
+      });
+
+      const svelteWarnings = resultUnfiltered.diagnostics.filter(
+        (d) => d.source === "svelte",
+      );
+      expect(svelteWarnings.length).toBe(1);
     });
   });
 });

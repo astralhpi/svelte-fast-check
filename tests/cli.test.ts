@@ -138,6 +138,7 @@ describe("CLI", () => {
       const resultWithWarnings = await runCli([
         "--project",
         "warning-project/tsconfig.json",
+        "--no-svelte-config",
       ]);
 
       expect(resultWithWarnings.stdout).toContain("state_referenced_locally");
@@ -150,6 +151,42 @@ describe("CLI", () => {
 
       expect(resultNoWarnings.stdout).not.toContain("state_referenced_locally");
       expect(resultNoWarnings.exitCode).toBe(0);
+    });
+  });
+
+  describe("--svelte-config flag", () => {
+    test("should load warningFilter from svelte.config.js by default", async () => {
+      // warning-project has svelte.config.js that filters state_referenced_locally
+      const result = await runCli([
+        "--project",
+        "warning-project/tsconfig.json",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain("state_referenced_locally");
+    });
+
+    test("--no-svelte-config should ignore svelte.config.js", async () => {
+      const result = await runCli([
+        "--project",
+        "warning-project/tsconfig.json",
+        "--no-svelte-config",
+      ]);
+
+      // Should show the warning since svelte.config.js is ignored
+      expect(result.stdout).toContain("state_referenced_locally");
+    });
+
+    test("--svelte-config should accept custom path", async () => {
+      const result = await runCli([
+        "--project",
+        "warning-project/tsconfig.json",
+        "--svelte-config",
+        "warning-project/svelte.config.js",
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain("state_referenced_locally");
     });
   });
 });

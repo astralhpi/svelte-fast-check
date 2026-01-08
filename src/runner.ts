@@ -4,9 +4,10 @@
  * Runs typecheck and compiler workers in parallel
  */
 
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { CompilerInput, CompilerOutput } from "./compiler/worker";
 import {
@@ -16,12 +17,62 @@ import {
 } from "./reporter";
 import { countDiagnostics } from "./typecheck/parser";
 import type { TypeCheckInput, TypeCheckOutput } from "./typecheck/worker";
-import type { CheckResult, FastCheckConfig } from "./types";
+import type { CheckResult, FastCheckConfig, MappedDiagnostic } from "./types";
 
 const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/** Svelte config structure (partial) */
+interface SvelteConfig {
+  compilerOptions?: {
+    warningFilter?: WarningFilter;
+  };
+}
+
+const SVELTE_CONFIG_FILES = [
+  "svelte.config.js",
+  "svelte.config.mjs",
+  "svelte.config.ts",
+];
+
+/**
+ * Load svelte.config.js from directory or specific path
+ */
+async function loadSvelteConfig(
+  rootDirOrPath: string,
+): Promise<SvelteConfig | null> {
+  // Find config file if directory is given
+  let configPath: string | undefined;
+  if (SVELTE_CONFIG_FILES.some((f) => rootDirOrPath.endsWith(f))) {
+    configPath = rootDirOrPath;
+  } else {
+    for (const filename of SVELTE_CONFIG_FILES) {
+      const candidate = resolve(rootDirOrPath, filename);
+      if (existsSync(candidate)) {
+        configPath = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!configPath) return null;
+
+  try {
+    const fileUrl = pathToFileURL(configPath).href;
+    const module = await import(fileUrl);
+    return module.default as SvelteConfig;
+  } catch {
+    return null;
+  }
+}
+
+/** Warning filter function type (same as svelte.config.js compilerOptions.warningFilter) */
+export type WarningFilter = (warning: {
+  code: string;
+  message: string;
+}) => boolean;
 
 export interface RunOptions {
   /** Incremental mode (convert only changed files) */
@@ -32,6 +83,12 @@ export interface RunOptions {
   quiet?: boolean;
   /** Enable svelte compiler warnings (default: true) */
   svelteWarnings?: boolean;
+  /** Use svelte.config.js for warningFilter (default: true) */
+  useSvelteConfig?: boolean;
+  /** Custom path to svelte.config.js (auto-detected if not specified) */
+  svelteConfigPath?: string;
+  /** Custom warning filter function (takes precedence over svelte.config.js) */
+  warningFilter?: WarningFilter;
 }
 
 /**
@@ -94,12 +151,25 @@ export async function run(
     raw = false,
     quiet = false,
     svelteWarnings = true,
+    useSvelteConfig = true,
+    svelteConfigPath,
+    warningFilter: customWarningFilter,
   } = options;
   const startTime = performance.now();
 
   const log = quiet ? () => {} : console.log.bind(console);
 
   log("🔍 svelte-fast-check: Starting type check...\n");
+
+  // Load warning filter from svelte.config.js (if enabled)
+  let warningFilter: WarningFilter | undefined = customWarningFilter;
+
+  if (!warningFilter && useSvelteConfig && svelteWarnings) {
+    const svelteConfig = await loadSvelteConfig(
+      svelteConfigPath ?? config.rootDir,
+    );
+    warningFilter = svelteConfig?.compilerOptions?.warningFilter;
+  }
 
   // Resolve worker paths
   const typeCheckWorkerPath = getWorkerPath("typecheck");
@@ -169,10 +239,20 @@ export async function run(
   }
 
   // Merge diagnostics from both workers
-  const allDiagnostics = [
+  let allDiagnostics = [
     ...typeCheckResult.diagnostics,
     ...(compilerResult?.diagnostics ?? []),
   ];
+
+  // Apply warning filter (post-processing, only for svelte warnings)
+  if (warningFilter) {
+    allDiagnostics = allDiagnostics.filter(
+      (d) =>
+        d.source !== "svelte" ||
+        !d.svelteCode ||
+        warningFilter({ code: d.svelteCode, message: d.message }),
+    );
+  }
 
   const { errorCount, warningCount } = countDiagnostics(allDiagnostics);
 

@@ -18,6 +18,7 @@ export {
 export {
   type RunOptions as FastCheckOptions,
   run as runFastCheck,
+  type WarningFilter,
 } from "./runner";
 // Re-export utilities for advanced usage
 export {

@@ -49,6 +49,15 @@ const argv = cli({
       alias: "p",
       description: "Path to tsconfig.json (for monorepo support)",
     },
+    svelteConfig: {
+      type: String,
+      description: "Path to svelte.config.js (auto-detected by default)",
+    },
+    noSvelteConfig: {
+      type: Boolean,
+      description: "Disable loading svelte.config.js",
+      default: false,
+    },
   },
   help: {
     description:
@@ -83,6 +92,8 @@ async function main() {
     noSvelteWarnings,
     config: configArg,
     project: projectArg,
+    svelteConfig: svelteConfigArg,
+    noSvelteConfig,
   } = argv.flags;
 
   // Validate: --config should not receive .json files
@@ -135,10 +146,21 @@ async function main() {
     }
   }
 
+  // Determine svelte config options
+  // --no-svelte-config disables loading svelte.config.js
+  // --svelte-config <path> sets custom path to svelte.config.js
+  // undefined means auto-detect in rootDir
+  const useSvelteConfig = !noSvelteConfig;
+  const svelteConfigPath = svelteConfigArg
+    ? resolve(process.cwd(), svelteConfigArg)
+    : undefined;
+
   const result = await runFastCheck(config, {
     incremental,
     raw,
     svelteWarnings: !noSvelteWarnings,
+    useSvelteConfig,
+    svelteConfigPath,
   });
 
   // exit with code 1 if there are errors

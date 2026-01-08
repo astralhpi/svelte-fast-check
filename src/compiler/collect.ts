@@ -87,6 +87,7 @@ function warningToDiagnostic(
     originalFile: relativePath,
     originalLine: warning.start.line,
     originalColumn: column,
+    svelteCode: warning.code,
   };
 }
 

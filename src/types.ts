@@ -55,6 +55,8 @@ export interface MappedDiagnostic extends Diagnostic {
   originalLine: number;
   /** Original 1-based column number */
   originalColumn: number;
+  /** Svelte warning code (e.g., 'state_referenced_locally') - only for svelte warnings */
+  svelteCode?: string;
 }
 
 /** Svelte compiler warning (from svelte.compile) */
