@@ -13,10 +13,11 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
-import { glob, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, relative, resolve } from "node:path";
 import { svelte2tsx } from "svelte2tsx";
+import { glob } from "tinyglobby";
 import type {
   ConversionResult,
   FastCheckConfig,
@@ -269,10 +270,7 @@ async function cleanOrphanTsxFiles(
   const tsxDir = resolve(config.rootDir, cacheRoot, TSX_DIR);
   if (!existsSync(tsxDir)) return 0;
 
-  const existingTsxFiles: string[] = [];
-  for await (const file of glob("**/*.svelte.tsx", { cwd: tsxDir })) {
-    existingTsxFiles.push(file);
-  }
+  const existingTsxFiles = await glob("**/*.svelte.tsx", { cwd: tsxDir });
   let deleted = 0;
 
   for (const file of existingTsxFiles) {
@@ -572,14 +570,11 @@ export async function findSvelteFiles(
 
   const exclude = tsconfig?.exclude || [];
 
-  // Use native glob from node:fs/promises
-  const files: string[] = [];
-  for await (const file of glob(patterns, {
+  // Use tinyglobby for cross-platform glob support
+  const files = await glob(patterns, {
     cwd: config.rootDir,
-    exclude: [...exclude, "**/node_modules/**"],
-  })) {
-    files.push(file);
-  }
+    ignore: [...exclude, "**/node_modules/**"],
+  });
 
   return [...new Set(files)];
 }
