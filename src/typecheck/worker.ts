@@ -4,7 +4,7 @@
  * Pipeline: svelte2tsx -> tsgo -> filter -> map
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { parentPort } from "node:worker_threads";
 import type { FastCheckConfig, WorkerOutput } from "../types";
@@ -59,21 +59,35 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
     // Step 2: Generate tsconfig & run tsgo
     const tsconfigPath = await generateTsconfig(config, { incremental });
     const tsgoPath = getTsgoPath();
-    const tscResult = spawnSync(
-      "node",
-      [tsgoPath, "--noEmit", "-p", tsconfigPath],
-      {
-        cwd: config.rootDir,
-        encoding: "utf-8",
-      },
-    );
 
-    if (tscResult.error) {
-      throw new Error(`tsgo execution failed: ${tscResult.error.message}`);
-    }
+    // Use spawn instead of spawnSync to avoid ENOBUFS error
+    // spawnSync has buffer size limits, spawn streams output without limits
+    const output = await new Promise<string>((resolve, reject) => {
+      const child = spawn("node", [tsgoPath, "--noEmit", "-p", tsconfigPath], {
+        cwd: config.rootDir,
+      });
+
+      const chunks: Buffer[] = [];
+
+      child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+      child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
+
+      child.on("error", (err) => {
+        reject(new Error(`tsgo execution failed: ${err.message}`));
+      });
+
+      child.on("close", (code) => {
+        const output = Buffer.concat(chunks).toString("utf-8");
+        if (code !== 0 && output.trim() === "") {
+          return reject(
+            new Error(`tsgo execution failed with exit code ${code}.`),
+          );
+        }
+        resolve(output);
+      });
+    });
 
     // Step 3: Parse results
-    const output = (tscResult.stdout ?? "") + (tscResult.stderr ?? "");
     let diagnostics = parseTscOutput(output);
     diagnostics = diagnostics.map((d) => ({ ...d, source: "ts" as const }));
 
