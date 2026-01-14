@@ -6,6 +6,7 @@
 
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { parentPort } from "node:worker_threads";
 import type { FastCheckConfig, WorkerOutput } from "../types";
 import {
@@ -39,8 +40,8 @@ function getTsgoPath(): string {
     const nativePreviewPath = require.resolve(
       "@typescript/native-preview/package.json",
     );
-    const packageDir = nativePreviewPath.replace("/package.json", "");
-    return `${packageDir}/bin/tsgo.js`;
+    const packageDir = dirname(nativePreviewPath);
+    return join(packageDir, "bin", "tsgo.js");
   } catch {
     return "tsgo";
   }
