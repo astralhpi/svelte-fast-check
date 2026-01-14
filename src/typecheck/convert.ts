@@ -477,7 +477,8 @@ function resolvePatterns(
     // All non-absolute paths in tsconfig are relative to the file's directory.
     // Resolve to absolute path, then make relative to rootDir for glob.
     const absolutePath = resolve(patternBaseDir, pattern);
-    return relative(rootDir, absolutePath);
+    // Use forward slashes for glob patterns (Windows returns backslashes)
+    return relative(rootDir, absolutePath).replace(/\\/g, "/");
   });
 }
 
