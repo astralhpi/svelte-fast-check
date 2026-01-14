@@ -44,7 +44,6 @@ Measured on a 282-file Svelte project (M4 Pro):
 
 ## Requirements
 
-- **macOS or Linux** (Windows is not supported)
 - **Node.js 22+** or **Bun**
 - Svelte 5+
 - TypeScript 5+
@@ -65,9 +64,28 @@ npx svelte-fast-check
 
 # Incremental mode (recommended)
 npx svelte-fast-check --incremental
+```
 
-# Even faster with bun
+### Running with Bun
+
+By default, CLI scripts with `#!/usr/bin/env node` shebang run with Node.js even when using Bun. To run with Bun runtime for better performance, use the `--bun` flag:
+
+```bash
+# Runs with Node.js (default)
 bun svelte-fast-check --incremental
+
+# Runs with Bun runtime (faster)
+bun --bun svelte-fast-check --incremental
+```
+
+Or configure in `package.json`:
+
+```json
+{
+  "scripts": {
+    "check": "bun --bun svelte-fast-check --incremental"
+  }
+}
 ```
 
 ### CLI Options

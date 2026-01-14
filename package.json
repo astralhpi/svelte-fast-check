@@ -9,7 +9,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "svelte-fast-check": "bin/svelte-fast-check.sh"
+    "svelte-fast-check": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -55,8 +55,7 @@
     "tsup": "^8.0.0"
   },
   "files": [
-    "dist",
-    "bin"
+    "dist"
   ],
   "keywords": [
     "svelte",
