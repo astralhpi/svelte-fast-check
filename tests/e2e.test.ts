@@ -413,71 +413,60 @@ describe("svelte-fast-check E2E", () => {
 
   describe("alias-project (svelte.config.js kit.alias)", () => {
     const projectDir = resolve(fixturesDir, "alias-project");
+    // Use separate cache dirs to enable parallel execution
+    const cacheWithAlias = resolve(projectDir, ".fast-check-with-alias");
+    const cacheWithoutAlias = resolve(projectDir, ".fast-check-without-alias");
 
-    afterAll(() => {
-      cleanupCache(projectDir);
+    let resultWithAlias: CheckResult;
+    let resultWithoutAlias: CheckResult;
+
+    beforeAll(async () => {
+      // Run both in parallel with separate cache dirs
+      [resultWithAlias, resultWithoutAlias] = await Promise.all([
+        runFastCheck(
+          {
+            rootDir: projectDir,
+            srcDir: resolve(projectDir, "src"),
+            cacheDir: cacheWithAlias,
+          },
+          { quiet: true, svelteWarnings: false },
+        ),
+        runFastCheck(
+          {
+            rootDir: projectDir,
+            srcDir: resolve(projectDir, "src"),
+            cacheDir: cacheWithoutAlias,
+          },
+          { quiet: true, svelteWarnings: false, useSvelteConfig: false },
+        ),
+      ]);
     });
 
-    test("should fail to resolve alias imports without svelte.config.js", async () => {
-      // Clean cache before run to avoid race conditions
-      cleanupCache(projectDir);
+    afterAll(() => {
+      rmSync(cacheWithAlias, { recursive: true, force: true });
+      rmSync(cacheWithoutAlias, { recursive: true, force: true });
+    });
 
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, "src"),
-      };
-
-      const result = await runFastCheck(config, {
-        quiet: true,
-        svelteWarnings: false,
-        useSvelteConfig: false,
-      });
-
+    test("should fail to resolve alias imports without svelte.config.js", () => {
       // Without kit.alias, 'shared/types' import cannot be resolved
-      const moduleNotFoundErrors = result.diagnostics.filter(
+      const moduleNotFoundErrors = resultWithoutAlias.diagnostics.filter(
         (d) => d.code === 2307 && d.message.includes("shared"),
       );
       expect(moduleNotFoundErrors.length).toBeGreaterThan(0);
     });
 
-    test("should resolve alias imports using kit.alias from svelte.config.js", async () => {
-      // Clean cache before run to avoid race conditions
-      cleanupCache(projectDir);
-
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, "src"),
-      };
-
-      const result = await runFastCheck(config, {
-        quiet: true,
-        svelteWarnings: false,
-      });
-
+    test("should resolve alias imports using kit.alias from svelte.config.js", () => {
       // With kit.alias, alias imports should resolve without errors
-      const moduleNotFoundErrors = result.diagnostics.filter(
+      const moduleNotFoundErrors = resultWithAlias.diagnostics.filter(
         (d) => d.code === 2307, // TS2307: Cannot find module
       );
       expect(moduleNotFoundErrors.length).toBe(0);
-      expect(result.errorCount).toBe(0);
+      expect(resultWithAlias.errorCount).toBe(0);
     });
 
-    test("should resolve $lib alias alongside custom kit.alias", async () => {
-      // Clean cache before run to avoid race conditions
-      cleanupCache(projectDir);
-
-      const config: FastCheckConfig = {
-        rootDir: projectDir,
-        srcDir: resolve(projectDir, "src"),
-      };
-
-      const result = await runFastCheck(config, {
-        quiet: true,
-        svelteWarnings: false,
-      });
-
+    test("should resolve $lib alias alongside custom kit.alias", () => {
       // $lib alias should also work (SvelteKit default)
-      const libErrors = result.diagnostics.filter(
+      const libErrors = resultWithAlias.diagnostics.filter(
         (d) => d.code === 2307 && d.message.includes("$lib"),
       );
       expect(libErrors.length).toBe(0);
