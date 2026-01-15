@@ -29,6 +29,7 @@ interface SvelteConfig {
   compilerOptions?: {
     warningFilter?: WarningFilter;
   };
+  kit?: Record<string, unknown>;
 }
 
 const SVELTE_CONFIG_FILES = [
@@ -169,14 +170,29 @@ export async function run(
 
   log("🔍 svelte-fast-check: Starting type check...\n");
 
-  // Load warning filter from svelte.config.js (if enabled)
+  // Load svelte.config.js (if enabled)
   let warningFilter: WarningFilter | undefined = customWarningFilter;
 
-  if (!warningFilter && useSvelteConfig && svelteWarnings) {
+  if (useSvelteConfig) {
     const svelteConfig = await loadSvelteConfig(
       svelteConfigPath ?? config.rootDir,
     );
-    warningFilter = svelteConfig?.compilerOptions?.warningFilter;
+
+    // Load warning filter
+    if (!warningFilter && svelteWarnings) {
+      warningFilter = svelteConfig?.compilerOptions?.warningFilter;
+    }
+
+    // Check if SvelteKit project needs sync
+    if (svelteConfig?.kit !== undefined) {
+      const svelteKitDir = resolve(config.rootDir, ".svelte-kit");
+      if (!existsSync(svelteKitDir)) {
+        console.warn(
+          "\n⚠️  SvelteKit project detected but .svelte-kit directory not found.",
+        );
+        console.warn("   Run 'npx svelte-kit sync' to generate types.\n");
+      }
+    }
   }
 
   // Resolve worker paths
