@@ -124,6 +124,41 @@ export function filterFalsePositives(
   tsxContents: Map<string, string>,
 ): Diagnostic[] {
   return diagnostics.filter((d) => {
+    // --- Message-only filters (no file content needed) ---
+
+    // [bundler] MODULE_NOT_FOUND (TS2307): filter asset imports (images, etc.)
+    // Both tsc and tsgo report this, but bundlers (Vite/Webpack) handle these at build time.
+    // Examples: import logo from './logo.png', import icon from './icon.avif'
+    if (d.code === DiagnosticCode.MODULE_NOT_FOUND) {
+      if (isAssetImport(d.message)) {
+        return false;
+      }
+    }
+
+    // [tsgo-specific] NO_EXPORTED_MEMBER (TS2614): filter svelte component type exports
+    // tsgo has different module resolution behavior for .svelte files.
+    // This filter must run before the content guard since it also applies to .ts files
+    // that import from .svelte files.
+    // Issue: https://github.com/microsoft/typescript-go/issues/1616
+    if (d.code === DiagnosticCode.NO_EXPORTED_MEMBER) {
+      if (d.message.includes("*.svelte")) {
+        return false;
+      }
+    }
+
+    // [tsgo-specific] TYPE_NOT_ASSIGNABLE (TS2322): filter Snippet type compatibility errors
+    // tsgo loses `unique symbol` when accessed through a property, causing Snippet type mismatch.
+    // svelte2tsx generates Snippet types with `unique symbol` marker that tsgo can't match correctly.
+    // tsc handles these correctly.
+    // Issue: https://github.com/microsoft/typescript-go/issues/1682
+    if (d.code === DiagnosticCode.TYPE_NOT_ASSIGNABLE) {
+      if (isSnippetTypeMismatch(d)) {
+        return false;
+      }
+    }
+
+    // --- Content-dependent filters (need .svelte.tsx file content) ---
+
     const content = tsxContents.get(d.file);
     if (!content) return true; // Can't filter without content, keep it
 
@@ -212,36 +247,6 @@ export function filterFalsePositives(
         d.file.endsWith(".svelte.tsx") &&
         isInComponentPropCallback(content, d)
       ) {
-        return false;
-      }
-    }
-
-    // 10. [bundler] MODULE_NOT_FOUND (TS2307): filter asset imports (images, etc.)
-    // Both tsc and tsgo report this, but bundlers (Vite/Webpack) handle these at build time.
-    // Examples: import logo from './logo.png', import icon from './icon.avif'
-    if (d.code === DiagnosticCode.MODULE_NOT_FOUND) {
-      if (isAssetImport(d.message)) {
-        return false;
-      }
-    }
-
-    // 11. [tsgo-specific] NO_EXPORTED_MEMBER (TS2614): filter svelte component type exports
-    // tsgo has different module resolution behavior for .svelte files.
-    // tsc resolves these correctly via svelte2tsx's type definitions.
-    // Issue: https://github.com/microsoft/typescript-go/issues/1616
-    if (d.code === DiagnosticCode.NO_EXPORTED_MEMBER) {
-      if (d.message.includes("*.svelte")) {
-        return false;
-      }
-    }
-
-    // 12. [tsgo-specific] TYPE_NOT_ASSIGNABLE (TS2322): filter Snippet type compatibility errors
-    // tsgo loses `unique symbol` when accessed through a property, causing Snippet type mismatch.
-    // svelte2tsx generates Snippet types with `unique symbol` marker that tsgo can't match correctly.
-    // tsc handles these correctly.
-    // Issue: https://github.com/microsoft/typescript-go/issues/1682
-    if (d.code === DiagnosticCode.TYPE_NOT_ASSIGNABLE) {
-      if (isSnippetTypeMismatch(d)) {
         return false;
       }
     }

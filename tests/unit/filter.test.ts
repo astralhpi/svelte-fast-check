@@ -462,6 +462,56 @@ const value = 2;
     });
   });
 
+  describe("message-only filters for .ts files", () => {
+    test("should filter TS2614 *.svelte errors in .ts files", () => {
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2614,
+          "Module '\"*.svelte\"' has no exported member 'Graph'.",
+          "src/lib/utils.ts",
+          1,
+          15,
+        ),
+      ];
+
+      const result = filterFalsePositives(diagnostics, new Map());
+
+      expect(result).toHaveLength(0);
+    });
+
+    test("should filter TS2307 asset imports in .ts files", () => {
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2307,
+          "Cannot find module './logo.png' or its corresponding type declarations.",
+          "src/lib/utils.ts",
+          1,
+          20,
+        ),
+      ];
+
+      const result = filterFalsePositives(diagnostics, new Map());
+
+      expect(result).toHaveLength(0);
+    });
+
+    test("should keep real TS2614 errors in .ts files", () => {
+      const diagnostics: Diagnostic[] = [
+        makeDiag(
+          2614,
+          "Module '\"some-lib\"' has no exported member 'Foo'.",
+          "src/lib/utils.ts",
+          1,
+          15,
+        ),
+      ];
+
+      const result = filterFalsePositives(diagnostics, new Map());
+
+      expect(result).toHaveLength(1);
+    });
+  });
+
   describe("edge cases", () => {
     test("should keep errors when tsx content not available", () => {
       const diagnostics: Diagnostic[] = [
