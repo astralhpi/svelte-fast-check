@@ -8,7 +8,8 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { parentPort } from "node:worker_threads";
-import type { FastCheckConfig, WorkerOutput } from "../types";
+import picomatch from "picomatch";
+import type { FastCheckConfig, MappedDiagnostic, WorkerOutput } from "../types";
 import {
   buildSourcemapMap,
   convertAllSvelteFiles,
@@ -24,6 +25,24 @@ import { filterNegativeLines, mapDiagnostics } from "./mapper";
 import { parseTscOutput } from "./parser";
 
 const require = createRequire(import.meta.url);
+
+/**
+ * Filter out diagnostics from excluded file paths.
+ *
+ * tsconfig `exclude` only prevents files from being directly included by
+ * `include` globs — it does not prevent type-checking of files reached via
+ * imports. This post-processing step drops diagnostics whose resolved file
+ * path matches any `config.exclude` pattern, ensuring excluded files are
+ * truly silenced.
+ */
+function filterExcludedPaths(
+  diagnostics: MappedDiagnostic[],
+  excludePatterns: string[],
+): MappedDiagnostic[] {
+  if (excludePatterns.length === 0) return diagnostics;
+  const isExcluded = picomatch(excludePatterns);
+  return diagnostics.filter((d) => !isExcluded(d.originalFile));
+}
 
 /** TypeCheck worker input */
 export interface TypeCheckInput {
@@ -121,6 +140,9 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
       cacheDir,
     );
     mapped = filterNegativeLines(mapped);
+
+    // Step 6: Filter diagnostics from excluded paths
+    mapped = filterExcludedPaths(mapped, config.exclude || []);
 
     return {
       diagnostics: mapped,

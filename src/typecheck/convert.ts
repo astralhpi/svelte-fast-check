@@ -446,7 +446,9 @@ export async function generateTsconfig(
       "../node_modules/**",
       // Include excludes from tsconfig.json
       ...(projectTsconfig?.exclude || []).map((p: string) => `../${p}`),
-      ...(config.exclude || []),
+      ...(config.exclude || []).map((p: string) =>
+        p.startsWith("../") ? p : `../${p}`,
+      ),
     ],
   };
 
