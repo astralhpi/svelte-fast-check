@@ -80,7 +80,7 @@ bun svelte-fast-check --incremental
 
 ## 설정
 
-대부분 설정 없이 동작합니다. `tsconfig.json`의 `paths`, `exclude`를 자동으로 읽습니다.
+대부분 설정 없이 동작합니다. `tsconfig.json`의 `paths`, `exclude`, `files`를 자동으로 읽습니다.
 
 커스텀 설정이 필요하면 `svelte-fast-check.config.ts` 파일을 만들면 됩니다.
 
