@@ -375,6 +375,15 @@ export async function generateTsconfig(
       moduleResolution.toLowerCase(),
     );
 
+  // Include project tsconfig "files" entries (resolved relative to generated tsconfig dir)
+  const generatedTsconfigDir = dirname(tsconfigPath);
+  const projectFiles = (projectTsconfig?.files || []).map((file) =>
+    relative(generatedTsconfigDir, resolve(config.rootDir, file)).replace(
+      /\\/g,
+      "/",
+    ),
+  );
+
   // Generate tsconfig for fast-check
   // Override only necessary settings on top of project tsconfig's compilerOptions
   const tsconfigContent = {
@@ -421,10 +430,14 @@ export async function generateTsconfig(
     // svelte2tsx shims + app.d.ts for DOM type overrides
     // Use absolute paths to svelte2tsx from svelte-fast-check's dependencies
     files: [
-      // SvelteKit app.d.ts for global type declarations
-      ...(isSvelteKit ? ["../src/app.d.ts"] : []),
-      resolve(svelte2tsxPath, "svelte-shims-v4.d.ts"),
-      resolve(svelte2tsxPath, "svelte-jsx-v4.d.ts"),
+      ...new Set([
+        // SvelteKit app.d.ts for global type declarations
+        ...(isSvelteKit ? ["../src/app.d.ts"] : []),
+        // Respect explicit project tsconfig files (e.g. ambient declarations at project root)
+        ...projectFiles,
+        resolve(svelte2tsxPath, "svelte-shims-v4.d.ts"),
+        resolve(svelte2tsxPath, "svelte-jsx-v4.d.ts"),
+      ]),
     ],
 
     include: [
@@ -459,6 +472,7 @@ export async function generateTsconfig(
 /** Parsed tsconfig structure */
 interface ParsedTsconfig {
   compilerOptions?: Record<string, unknown>;
+  files?: string[];
   include?: string[];
   exclude?: string[];
 }
@@ -485,8 +499,24 @@ function resolvePatterns(
 }
 
 /**
+ * Resolve tsconfig `files` entries relative to rootDir.
+ */
+function resolveFiles(
+  files: string[] | undefined,
+  filesBaseDir: string,
+  rootDir: string,
+): string[] | undefined {
+  if (!files) return undefined;
+
+  return files.map((file) => {
+    const absolutePath = resolve(filesBaseDir, file);
+    return relative(rootDir, absolutePath).replace(/\\/g, "/");
+  });
+}
+
+/**
  * Read project tsconfig.json (recursively resolve extends chain)
- * All include/exclude patterns are resolved relative to rootDir.
+ * All include/exclude patterns and files entries are resolved relative to rootDir.
  */
 function readTypesFromTsconfig(
   rootDir: string,
@@ -515,6 +545,7 @@ function readTypesFromTsconfig(
       );
       if (parentTsconfig) {
         // Resolve current tsconfig's patterns relative to rootDir
+        const resolvedFiles = resolveFiles(tsconfig.files, currentDir, rootDir);
         const resolvedInclude = resolvePatterns(
           tsconfig.include,
           currentDir,
@@ -531,7 +562,8 @@ function readTypesFromTsconfig(
             ...parentTsconfig.compilerOptions,
             ...tsconfig.compilerOptions,
           },
-          // Use current tsconfig's patterns if present, otherwise parent's (already resolved)
+          // Use current tsconfig's values if present, otherwise parent's (already resolved)
+          files: resolvedFiles || parentTsconfig.files,
           include: resolvedInclude || parentTsconfig.include,
           exclude: resolvedExclude || parentTsconfig.exclude,
         };
@@ -541,6 +573,7 @@ function readTypesFromTsconfig(
     // Resolve patterns for non-extended tsconfig
     return {
       compilerOptions: tsconfig.compilerOptions,
+      files: resolveFiles(tsconfig.files, currentDir, rootDir),
       include: resolvePatterns(tsconfig.include, currentDir, rootDir),
       exclude: resolvePatterns(tsconfig.exclude, currentDir, rootDir),
     };
