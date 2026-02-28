@@ -150,6 +150,34 @@ describe("svelte-fast-check E2E", () => {
     });
   });
 
+  describe("tsconfig-files-project", () => {
+    const projectDir = resolve(fixturesDir, "tsconfig-files-project");
+    let result: CheckResult;
+
+    beforeAll(async () => {
+      const config: FastCheckConfig = {
+        rootDir: projectDir,
+        srcDir: resolve(projectDir, "src"),
+      };
+      result = await runFastCheck(config, {
+        quiet: true,
+        svelteWarnings: false,
+      });
+    });
+
+    afterAll(() => {
+      cleanupCache(projectDir);
+    });
+
+    test("should respect tsconfig files entries for ambient declarations", () => {
+      // worker-configuration.d.ts is declared via tsconfig files: [] at project root.
+      // Without forwarding tsconfig files into generated .fast-check/tsconfig.json,
+      // this would fail with TS2304 (cannot find name '__WORKER_CONFIGURATION__').
+      expect(result.errorCount).toBe(0);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+  });
+
   describe("monorepo-project", () => {
     const projectDir = resolve(fixturesDir, "monorepo-project");
     let result: CheckResult;

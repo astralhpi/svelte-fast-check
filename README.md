@@ -100,7 +100,7 @@ Or configure in `package.json`:
 
 ## Configuration
 
-Works out of the box for most projects. Automatically reads `paths` and `exclude` from `tsconfig.json`.
+Works out of the box for most projects. Automatically reads `paths`, `exclude`, and `files` from `tsconfig.json`.
 
 For custom configuration, create `svelte-fast-check.config.ts`:
 
