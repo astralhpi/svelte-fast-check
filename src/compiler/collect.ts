@@ -20,6 +20,25 @@ import type {
 const WARNINGS_DIR = "warnings";
 
 /** Get warnings cache path for a source file */
+/**
+ * Load svelte.config.js/ts to get compilerOptions
+ */
+async function loadSvelteCompilerOptions(rootDir: string): Promise<Record<string, unknown> | undefined> {
+  for (const ext of [".js", ".ts"]) {
+    const configPath = resolve(rootDir, `svelte.config${ext}`);
+    if (existsSync(configPath)) {
+      try {
+        const mod = await import(configPath);
+        return mod.default?.compilerOptions;
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Get warnings cache path for a source file */
 function getWarningsCachePath(
   config: FastCheckConfig,
   sourcePath: string,
@@ -49,9 +68,14 @@ interface CachedWarnings {
 /**
  * Get svelte compiler warnings for a single file
  */
-function getSvelteWarnings(filePath: string, content: string): SvelteWarning[] {
+function getSvelteWarnings(
+  filePath: string,
+  content: string,
+  compilerOptions: Record<string, unknown> = {},
+): SvelteWarning[] {
   try {
     const result = compile(content, {
+      ...compilerOptions,
       filename: filePath,
       generate: false,
     });
@@ -97,6 +121,7 @@ function warningToDiagnostic(
 export async function collectAllSvelteWarnings(
   config: FastCheckConfig,
 ): Promise<MappedDiagnostic[]> {
+  const compilerOptions = await loadSvelteCompilerOptions(config.rootDir);
   const files = await findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
 
@@ -104,7 +129,7 @@ export async function collectAllSvelteWarnings(
     files.map(async (file) => {
       const sourcePath = resolve(config.rootDir, file);
       const content = await readFile(sourcePath, "utf-8");
-      const warnings = getSvelteWarnings(sourcePath, content);
+      const warnings = getSvelteWarnings(sourcePath, content, compilerOptions);
       return warnings.map((w) => warningToDiagnostic(w, config.rootDir));
     }),
   );
@@ -123,6 +148,7 @@ export async function collectChangedSvelteWarnings(
   config: FastCheckConfig,
 ): Promise<MappedDiagnostic[]> {
   ensureWarningsCacheDir(config);
+  const compilerOptions = await loadSvelteCompilerOptions(config.rootDir);
 
   const files = await findSvelteFiles(config);
   const diagnostics: MappedDiagnostic[] = [];
@@ -154,7 +180,7 @@ export async function collectChangedSvelteWarnings(
 
       // Compile and cache
       const content = await readFile(sourcePath, "utf-8");
-      const warnings = getSvelteWarnings(sourcePath, content);
+      const warnings = getSvelteWarnings(sourcePath, content, compilerOptions);
 
       // Save to cache (store source file's mtime)
       const cacheData: CachedWarnings = {
