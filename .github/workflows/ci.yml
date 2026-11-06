@@ -37,12 +37,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'release'
+    # npm trusted publishing (OIDC): no NPM_TOKEN needed
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # trusted publishing needs npm >= 11.5.1 (bundled with Node 24)
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - uses: oven-sh/setup-bun@v2
@@ -51,6 +56,5 @@ jobs:
 
       - run: bun install
       - run: bun run build
+      - run: npm --version
       - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
