@@ -421,6 +421,56 @@ const value = 2;
       expect(result).toHaveLength(1);
     });
 
+    // Real tsgo/tsrs output shape: head message + indented elaboration chain
+    const brand =
+      "{ '{@render ...} must be called with a Snippet': \"import type { Snippet } from 'svelte'\"; }";
+    const snippetElaboration = [
+      `Type '${brand} & typeof SnippetReturn' is not assignable to type '${brand} & typeof SnippetReturn'. Two different types with this name exist, but they are unrelated.`,
+      `Type '${brand} & unique symbol' is not assignable to type 'unique symbol'.`,
+    ].join("\n");
+    const snippetCases: [string, string][] = [
+      [
+        "tsgo",
+        `Type '(props: ModalProps) => ${brand} & unique symbol' is not assignable to type 'Snippet<[ModalProps]>'.`,
+      ],
+      [
+        "tsgo (truncated head)",
+        "Type '(props: Record<string, unknown> & { close: () => void; } & { ...; }) => { ...; } &...' is not assignable to type 'Snippet<[Record<string, unknown> & { close: () => void; }]>'.",
+      ],
+      [
+        "tsrs",
+        "Type '(props: ModalProps) => ReturnType<import('svelte').Snippet>' is not assignable to type 'Snippet<[ModalProps]>'.",
+      ],
+    ];
+    for (const [checker, message] of snippetCases) {
+      test(`should filter Snippet unique symbol errors from ${checker}`, () => {
+        const d = makeDiag(2322, message, "test.svelte.tsx", 1, 7);
+        d.elaboration = snippetElaboration;
+
+        const result = filterFalsePositives([d], new Map());
+
+        expect(result).toHaveLength(0);
+      });
+    }
+
+    test("should keep Snippet parameter mismatches", () => {
+      const d = makeDiag(
+        2322,
+        "Type '(props: { id: number; }) => ReturnType<import('svelte').Snippet>' is not assignable to type 'Snippet<[{ id: string; }]>'.",
+        "test.svelte.tsx",
+        1,
+        7,
+      );
+      d.elaboration = [
+        "Types of parameters 'props' and 'args_0' are incompatible.",
+        "Type '{ id: string; }' is not assignable to type '{ id: number; }'.",
+      ].join("\n");
+
+      const result = filterFalsePositives([d], new Map());
+
+      expect(result).toHaveLength(1);
+    });
+
     test("should keep TS2322 errors in non-.svelte.tsx files", () => {
       const content = `const x: string = 123;`;
       const diagnostics: Diagnostic[] = [

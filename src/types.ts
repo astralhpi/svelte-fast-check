@@ -41,6 +41,8 @@ export interface Diagnostic {
   code: number;
   /** Error message */
   message: string;
+  /** Indented elaboration lines that follow the message (not displayed) */
+  elaboration?: string;
   /** Severity */
   severity: "error" | "warning";
   /** Source of the diagnostic */
@@ -113,7 +115,16 @@ export interface FastCheckConfig {
   svelteKitTypesDir?: string;
   /** @types packages to include (empty array disables auto-loading) */
   types?: string[];
+  /**
+   * Type checker backend (default: "tsgo").
+   * "tsrs" is experimental: requires the `tsrs` package to be resolvable
+   * from the project, or SVELTE_FAST_CHECK_TSRS_PATH pointing to its bin.
+   */
+  checker?: Checker;
 }
+
+/** Supported type checker backends */
+export type Checker = "tsgo" | "tsrs";
 
 /** Common worker output */
 export interface WorkerOutput {

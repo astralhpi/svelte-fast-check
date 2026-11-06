@@ -20,26 +20,39 @@ export function parseTscOutput(output: string): Diagnostic[] {
   // tsc error pattern: file(line,col): error TScode: message
   const pattern = /^(.+?)\((\d+),(\d+)\):\s*(error|warning)\s+TS(\d+):\s*(.+)$/;
 
+  // Diagnostic that indented elaboration (message chain) lines belong to
+  let current: Diagnostic | undefined;
+
   for (const line of lines) {
     const match = line.match(pattern);
-    if (match) {
-      const file = match[1];
-      const lineStr = match[2];
-      const colStr = match[3];
-      const severity = match[4];
-      const codeStr = match[5];
-      const message = match[6];
-
-      if (file && lineStr && colStr && severity && codeStr && message) {
-        diagnostics.push({
-          file: file.trim(),
-          line: parseInt(lineStr, 10),
-          column: parseInt(colStr, 10),
-          code: parseInt(codeStr, 10),
-          message: message.trim(),
-          severity: severity as "error" | "warning",
-        });
+    if (!match) {
+      if (current && /^\s+\S/.test(line)) {
+        const text = line.trim();
+        current.elaboration = current.elaboration
+          ? `${current.elaboration}\n${text}`
+          : text;
+      } else {
+        current = undefined;
       }
+      continue;
+    }
+    const file = match[1];
+    const lineStr = match[2];
+    const colStr = match[3];
+    const severity = match[4];
+    const codeStr = match[5];
+    const message = match[6];
+
+    if (file && lineStr && colStr && severity && codeStr && message) {
+      current = {
+        file: file.trim(),
+        line: parseInt(lineStr, 10),
+        column: parseInt(colStr, 10),
+        code: parseInt(codeStr, 10),
+        message: message.trim(),
+        severity: severity as "error" | "warning",
+      };
+      diagnostics.push(current);
     }
   }
 

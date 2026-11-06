@@ -1,6 +1,6 @@
 {
   "name": "svelte-fast-check",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Up to 24x faster type and Svelte compiler warning checker for Svelte/SvelteKit projects using svelte2tsx + tsgo",
   "type": "module",
   "workspaces": [
@@ -54,6 +54,7 @@
     "@types/picomatch": "^4.0.2",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
+    "tsrs": "0.22.0-ts7.1.0-beta",
     "tsup": "^8.0.0"
   },
   "files": [

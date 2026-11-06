@@ -9,7 +9,12 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { parentPort } from "node:worker_threads";
 import picomatch from "picomatch";
-import type { FastCheckConfig, MappedDiagnostic, WorkerOutput } from "../types";
+import type {
+  Checker,
+  FastCheckConfig,
+  MappedDiagnostic,
+  WorkerOutput,
+} from "../types";
 import {
   buildSourcemapMap,
   convertAllSvelteFiles,
@@ -66,6 +71,28 @@ function getTsgoPath(): string {
   }
 }
 
+/**
+ * Resolve the tsrs launcher (experimental backend).
+ * tsrs is not a dependency: resolve it from the project first, then from
+ * svelte-fast-check itself. SVELTE_FAST_CHECK_TSRS_PATH overrides both.
+ */
+function getTsrsPath(rootDir: string): string {
+  const override = process.env.SVELTE_FAST_CHECK_TSRS_PATH;
+  if (override) return override;
+  for (const req of [createRequire(join(rootDir, "package.json")), require]) {
+    try {
+      return join(dirname(req.resolve("tsrs/package.json")), "bin", "tsrs");
+    } catch {}
+  }
+  throw new Error(
+    "checker 'tsrs' requires the tsrs package (npm i -D tsrs) or SVELTE_FAST_CHECK_TSRS_PATH",
+  );
+}
+
+function getCheckerPath(checker: Checker, rootDir: string): string {
+  return checker === "tsrs" ? getTsrsPath(rootDir) : getTsgoPath();
+}
+
 async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
   const { config, incremental, raw } = input;
   const startTime = performance.now();
@@ -76,16 +103,21 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
       ? await convertChangedFiles(config)
       : await convertAllSvelteFiles(config);
 
-    // Step 2: Generate tsconfig & run tsgo
+    // Step 2: Generate tsconfig & run the checker (tsgo by default)
+    const checker = config.checker ?? "tsgo";
     const tsconfigPath = await generateTsconfig(config, { incremental });
-    const tsgoPath = getTsgoPath();
+    const checkerPath = getCheckerPath(checker, config.rootDir);
 
     // Use spawn instead of spawnSync to avoid ENOBUFS error
     // spawnSync has buffer size limits, spawn streams output without limits
     const output = await new Promise<string>((resolve, reject) => {
-      const child = spawn("node", [tsgoPath, "--noEmit", "-p", tsconfigPath], {
-        cwd: config.rootDir,
-      });
+      const child = spawn(
+        "node",
+        [checkerPath, "--noEmit", "-p", tsconfigPath],
+        {
+          cwd: config.rootDir,
+        },
+      );
 
       const chunks: Buffer[] = [];
 
@@ -93,14 +125,14 @@ async function run(input: TypeCheckInput): Promise<TypeCheckOutput> {
       child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
 
       child.on("error", (err) => {
-        reject(new Error(`tsgo execution failed: ${err.message}`));
+        reject(new Error(`${checker} execution failed: ${err.message}`));
       });
 
       child.on("close", (code) => {
         const output = Buffer.concat(chunks).toString("utf-8");
         if (code !== 0 && output.trim() === "") {
           return reject(
-            new Error(`tsgo execution failed with exit code ${code}.`),
+            new Error(`${checker} execution failed with exit code ${code}.`),
           );
         }
         resolve(output);

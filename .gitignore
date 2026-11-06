@@ -23,6 +23,7 @@ npm-debug.log*
 
 # Agent context
 CONTEXT.md
+.scratch/
 
 # Lock files
 package-lock.json

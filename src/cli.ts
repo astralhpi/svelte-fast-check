@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { cli } from "cleye";
 import { runFastCheck } from "./index";
-import type { FastCheckConfig } from "./types";
+import type { Checker, FastCheckConfig } from "./types";
 
 /**
  * CLI-specific error for user-friendly messages
@@ -58,6 +58,11 @@ const argv = cli({
       description: "Disable loading svelte.config.js",
       default: false,
     },
+    checker: {
+      type: String,
+      description:
+        "Type checker backend: tsgo (default) or tsrs (experimental)",
+    },
   },
   help: {
     description:
@@ -94,7 +99,14 @@ async function main() {
     project: projectArg,
     svelteConfig: svelteConfigArg,
     noSvelteConfig,
+    checker: checkerArg,
   } = argv.flags;
+
+  if (checkerArg && checkerArg !== "tsgo" && checkerArg !== "tsrs") {
+    throw new CliError(
+      `--checker must be "tsgo" or "tsrs" (got "${checkerArg}")`,
+    );
+  }
 
   // Validate: --config should not receive .json files
   if (configArg?.endsWith(".json")) {
@@ -144,6 +156,10 @@ async function main() {
     } catch {
       // ignore config load failure
     }
+  }
+
+  if (checkerArg) {
+    config.checker = checkerArg as Checker;
   }
 
   // Determine svelte config options
