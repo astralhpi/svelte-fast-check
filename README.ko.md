@@ -77,6 +77,16 @@ bun svelte-fast-check --incremental
 | `--no-svelte-warnings` |      | Svelte 컴파일러 경고 생략 (타입만 체크)    |
 | `--raw`                | `-r` | 필터링/매핑 없이 원시 출력                 |
 | `--config <path>`      | `-c` | 설정 파일 경로 지정                        |
+| `--checker <name>`     |      | 타입 체커: `tsgo`(기본) 또는 `tsrs`(실험적) |
+
+#### tsrs 백엔드 (실험적)
+
+[tsrs](https://github.com/oxc-project/tsrs)는 TypeScript 7 컴파일러의 Rust 포팅입니다. 함께 설치되지 않으므로 직접 설치한 뒤 `--checker tsrs`(또는 설정 파일의 `checker: 'tsrs'`)로 선택합니다:
+
+```bash
+npm install -D tsrs
+npx svelte-fast-check --incremental --checker tsrs
+```
 
 ## 설정
 

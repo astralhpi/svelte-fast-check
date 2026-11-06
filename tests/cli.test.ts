@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
 
 const cliPath = resolve(import.meta.dir, "../dist/cli.js");
@@ -188,5 +189,39 @@ describe("CLI", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("state_referenced_locally");
     });
+  });
+
+  // tsrs is not a dependency; run only when it is available
+  const hasTsrs = (() => {
+    if (process.env.SVELTE_FAST_CHECK_TSRS_PATH) return true;
+    try {
+      createRequire(import.meta.url).resolve("tsrs/package.json");
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  describe("--checker flag", () => {
+    test("should reject unknown checker", async () => {
+      const result = await runCli(["--checker", "tsc"]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("--checker");
+    });
+
+    test.skipIf(!hasTsrs)(
+      "tsrs should report the same diagnostics as tsgo",
+      async () => {
+        const args = ["--project", "error-project/tsconfig.json"];
+        const tsgo = await runCli(args);
+        const tsrs = await runCli([...args, "--checker", "tsrs"]);
+        const strip = (s: string) => s.replace(/\d+ms/g, "");
+
+        expect(tsrs.exitCode).toBe(1);
+        expect(strip(tsrs.stdout)).toBe(strip(tsgo.stdout));
+      },
+      30000,
+    );
   });
 });

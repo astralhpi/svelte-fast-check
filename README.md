@@ -97,6 +97,16 @@ Or configure in `package.json`:
 | `--no-svelte-warnings` |       | Skip Svelte compiler warnings (type check only)        |
 | `--raw`                | `-r`  | Show raw output without filtering/mapping              |
 | `--config <path>`      | `-c`  | Specify config file path                               |
+| `--checker <name>`     |       | Type checker: `tsgo` (default) or `tsrs` (experimental) |
+
+#### tsrs backend (experimental)
+
+[tsrs](https://github.com/oxc-project/tsrs) is a Rust port of the TypeScript 7 compiler. It is not bundled; install it yourself and select it with `--checker tsrs` (or `checker: 'tsrs'` in the config file):
+
+```bash
+npm install -D tsrs
+npx svelte-fast-check --incremental --checker tsrs
+```
 
 ## Configuration
 
